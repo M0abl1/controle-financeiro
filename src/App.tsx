@@ -77,14 +77,14 @@ export default function App({
   );
   const [modal, setModal] = useState<EntryKind | null>(null);
   const [goals, setGoals] = useState<Goal[]>(() =>
-    load("cf-reserves-v1", seedGoals),
+    load("cf-reserves-v2", seedGoals),
   );
   const [search, setSearch] = useState("");
   useEffect(
     () => save("cf-transactions-v1-clean", transactions),
     [transactions],
   );
-  useEffect(() => save("cf-reserves-v1", goals), [goals]);
+  useEffect(() => save("cf-reserves-v2", goals), [goals]);
   const income = useMemo(
     () =>
       transactions
