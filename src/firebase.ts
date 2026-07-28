@@ -4,7 +4,7 @@ import {
   getAuth,
   GoogleAuthProvider,
   setPersistence,
-  signInWithRedirect,
+  signInWithPopup,
   signOut,
 } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
@@ -24,7 +24,7 @@ export const db = app ? getFirestore(app) : null;
 export async function googleLogin() {
   if (!auth) throw new Error("Configure o Firebase no arquivo .env.local");
   await setPersistence(auth, browserLocalPersistence);
-  return signInWithRedirect(auth, new GoogleAuthProvider());
+  return signInWithPopup(auth, new GoogleAuthProvider());
 }
 export async function logout() {
   if (auth) await signOut(auth);
