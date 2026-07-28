@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app'
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth'
+import { getAuth, GoogleAuthProvider, signInWithRedirect, signOut } from 'firebase/auth'
 import { getFirestore } from 'firebase/firestore'
 
 const config = {
@@ -11,5 +11,5 @@ export const firebaseEnabled = Boolean(config.apiKey && config.projectId)
 const app = firebaseEnabled ? initializeApp(config) : null
 export const auth = app ? getAuth(app) : null
 export const db = app ? getFirestore(app) : null
-export async function googleLogin() { if (!auth) throw new Error('Configure o Firebase no arquivo .env.local'); return signInWithPopup(auth, new GoogleAuthProvider()) }
+export async function googleLogin() { if (!auth) throw new Error('Configure o Firebase no arquivo .env.local'); return signInWithRedirect(auth, new GoogleAuthProvider()) }
 export async function logout() { if (auth) await signOut(auth) }
