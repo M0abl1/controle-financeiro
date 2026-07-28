@@ -926,6 +926,85 @@ td {
   color: #f26b75 !important;
   font-size: 12px;
 }
+.login-notice {
+  color: var(--green) !important;
+  font-size: 12px;
+}
+.email-login {
+  display: grid;
+  gap: 14px;
+  margin-top: 22px;
+}
+.email-login > label {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+.login-input {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 7px;
+  padding: 0 12px;
+  background: #081714;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.login-input:focus-within {
+  border-color: var(--green);
+}
+.login-input > svg {
+  width: 17px;
+  color: var(--muted);
+}
+.login-input input {
+  min-width: 0;
+  flex: 1;
+  padding: 13px 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #fff;
+}
+.login-input button {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.login-input button svg {
+  width: 17px;
+}
+.email-login .submit {
+  margin-top: 2px;
+}
+.reset-password {
+  display: block;
+  margin: 13px auto 0;
+  border: 0;
+  background: transparent;
+  color: var(--green);
+  font-size: 11px;
+  cursor: pointer;
+}
+.login-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 10px;
+  margin: 19px 0 0;
+}
+.login-divider::before,
+.login-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+.login-divider + .google-button {
+  margin-top: 14px;
+}
 .spin {
   animation: spin 1s linear infinite;
   color: var(--green);

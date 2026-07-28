@@ -3,7 +3,9 @@ import {
   browserLocalPersistence,
   getAuth,
   GoogleAuthProvider,
+  sendPasswordResetEmail,
   setPersistence,
+  signInWithEmailAndPassword,
   signInWithPopup,
   signOut,
 } from "firebase/auth";
@@ -25,6 +27,15 @@ export async function googleLogin() {
   if (!auth) throw new Error("Configure o Firebase no arquivo .env.local");
   await setPersistence(auth, browserLocalPersistence);
   return signInWithPopup(auth, new GoogleAuthProvider());
+}
+export async function emailLogin(email: string, password: string) {
+  if (!auth) throw new Error("Configure o Firebase no arquivo .env.local");
+  await setPersistence(auth, browserLocalPersistence);
+  return signInWithEmailAndPassword(auth, email, password);
+}
+export async function resetPassword(email: string) {
+  if (!auth) throw new Error("Configure o Firebase no arquivo .env.local");
+  return sendPasswordResetEmail(auth, email);
 }
 export async function logout() {
   if (auth) await signOut(auth);
