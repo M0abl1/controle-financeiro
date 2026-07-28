@@ -530,6 +530,21 @@ h1 {
   font-weight: 400;
   margin-top: 7px;
 }
+.form-error,
+.sync-error {
+  color: #f26b75;
+  font-size: 12px;
+}
+.sync-error {
+  padding: 11px 13px;
+  background: #3b2427;
+  border: 1px solid #66363b;
+  border-radius: 9px;
+}
+.submit:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
 .goal-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

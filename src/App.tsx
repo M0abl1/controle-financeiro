@@ -1,10 +1,4 @@
-import {
-  useEffect,
-  useMemo,
-  useState,
-  type Dispatch,
-  type SetStateAction,
-} from "react";
+import { useEffect, useMemo, useState } from "react";
 import Decimal from "decimal.js";
 import {
   AreaChart,
@@ -41,6 +35,7 @@ import type { User } from "firebase/auth";
 import { categories, seedAssets, seedGoals, seedTransactions } from "./data";
 import { load, save } from "./storage";
 import { setAccountPassword } from "./firebase";
+import { listReserves, removeReserve, saveReserve } from "./reserveRepository";
 import type { EntryKind, Goal, Pillar, Transaction } from "./types";
 
 type View = "home" | "common" | "reserve" | "investments" | "settings";
@@ -77,15 +72,44 @@ export default function App({
     load("cf-transactions-v1-clean", seedTransactions),
   );
   const [modal, setModal] = useState<EntryKind | null>(null);
-  const [goals, setGoals] = useState<Goal[]>(() =>
-    load("cf-reserves-v2", seedGoals),
-  );
+  const [goals, setGoals] = useState<Goal[]>(seedGoals);
+  const [reserveSyncError, setReserveSyncError] = useState("");
   const [search, setSearch] = useState("");
   useEffect(
     () => save("cf-transactions-v1-clean", transactions),
     [transactions],
   );
-  useEffect(() => save("cf-reserves-v2", goals), [goals]);
+  useEffect(() => {
+    if (!currentUser) return;
+    listReserves(currentUser.uid)
+      .then((items) => {
+        setGoals(items);
+        setReserveSyncError("");
+      })
+      .catch(() =>
+        setReserveSyncError(
+          "Não foi possível carregar as reservas do Firestore.",
+        ),
+      );
+  }, [currentUser]);
+
+  const persistReserve = async (goal: Goal) => {
+    if (!currentUser) throw new Error("Usuário não autenticado");
+    await saveReserve(currentUser.uid, goal);
+    setGoals((current) => {
+      const exists = current.some((item) => item.id === goal.id);
+      return exists
+        ? current.map((item) => (item.id === goal.id ? goal : item))
+        : [...current, goal];
+    });
+    setReserveSyncError("");
+  };
+
+  const deleteReserve = async (goalId: string) => {
+    if (!currentUser) throw new Error("Usuário não autenticado");
+    await removeReserve(currentUser.uid, goalId);
+    setGoals((current) => current.filter((item) => item.id !== goalId));
+  };
   const income = useMemo(
     () =>
       transactions
@@ -182,7 +206,12 @@ export default function App({
           />
         )}
         {view === "reserve" && (
-          <ReserveView goals={goals} setGoals={setGoals} />
+          <ReserveView
+            goals={goals}
+            onSave={persistReserve}
+            onDelete={deleteReserve}
+            syncError={reserveSyncError}
+          />
         )}
         {view === "investments" && <InvestmentsView freeCash={income * 0.2} />}
         {view === "settings" && (
@@ -438,10 +467,14 @@ function CommonView({
 }
 function ReserveView({
   goals,
-  setGoals,
+  onSave,
+  onDelete,
+  syncError,
 }: {
   goals: Goal[];
-  setGoals: Dispatch<SetStateAction<Goal[]>>;
+  onSave: (goal: Goal) => Promise<void>;
+  onDelete: (goalId: string) => Promise<void>;
+  syncError: string;
 }) {
   const [editing, setEditing] = useState<Goal | null | "new">(null);
   const total = goals.reduce((s, g) => s + g.value, 0);
@@ -469,6 +502,7 @@ function ReserveView({
           <Plus /> Nova reserva
         </button>
       </div>
+      {syncError && <p className="sync-error">{syncError}</p>}
       <div className="goal-grid">
         {goals.length === 0 && (
           <article className="panel empty-state">
@@ -501,11 +535,13 @@ function ReserveView({
               <button onClick={() => setEditing(g)}>Editar</button>
               <button
                 className="danger-link"
-                onClick={() => {
-                  if (confirm(`Excluir a reserva "${g.name}"?`))
-                    setGoals((current) =>
-                      current.filter((item) => item.id !== g.id),
-                    );
+                onClick={async () => {
+                  if (!confirm(`Excluir a reserva "${g.name}"?`)) return;
+                  try {
+                    await onDelete(g.id);
+                  } catch {
+                    alert("Não foi possível excluir a reserva no Firestore.");
+                  }
                 }}
               >
                 Excluir
@@ -542,13 +578,8 @@ function ReserveView({
         <ReserveModal
           goal={editing === "new" ? undefined : editing}
           close={() => setEditing(null)}
-          submit={(goal) => {
-            setGoals((current) => {
-              const exists = current.some((item) => item.id === goal.id);
-              return exists
-                ? current.map((item) => (item.id === goal.id ? goal : item))
-                : [...current, goal];
-            });
+          submit={async (goal) => {
+            await onSave(goal);
             setEditing(null);
           }}
         />
@@ -564,7 +595,7 @@ function ReserveModal({
 }: {
   goal?: Goal;
   close: () => void;
-  submit: (goal: Goal) => void;
+  submit: (goal: Goal) => Promise<void>;
 }) {
   const [name, setName] = useState(goal?.name ?? "");
   const [value, setValue] = useState(
@@ -578,21 +609,39 @@ function ReserveModal({
       : "",
   );
   const [cdi, setCdi] = useState(String(goal?.cdi ?? 100));
+  const [formError, setFormError] = useState("");
+  const [saving, setSaving] = useState(false);
   const parseMoney = (input: string) =>
     Number(input.replace(/\./g, "").replace(",", ".")) || 0;
-  const saveReserve = () => {
+  const saveReserve = async () => {
+    setFormError("");
     const parsedValue = parseMoney(value);
     const parsedTarget = parseMoney(target);
     const parsedCdi = Number(cdi.replace(",", "."));
-    if (!name.trim() || parsedValue < 0 || parsedTarget <= 0 || parsedCdi <= 0)
+    if (!name.trim()) {
+      setFormError("Informe o nome da reserva.");
       return;
-    submit({
-      id: goal?.id ?? crypto.randomUUID(),
-      name: name.trim(),
-      value: parsedValue,
-      target: parsedTarget,
-      cdi: parsedCdi,
-    });
+    }
+    if (parsedValue < 0 || parsedTarget <= 0 || parsedCdi <= 0) {
+      setFormError("Informe meta e CDI maiores que zero.");
+      return;
+    }
+    setSaving(true);
+    try {
+      await submit({
+        id: goal?.id ?? crypto.randomUUID(),
+        name: name.trim(),
+        value: parsedValue,
+        target: parsedTarget,
+        cdi: parsedCdi,
+      });
+    } catch {
+      setFormError(
+        "Não foi possível salvar no Firestore. Desative bloqueadores para este site e tente novamente.",
+      );
+    } finally {
+      setSaving(false);
+    }
   };
   return (
     <div
@@ -650,8 +699,13 @@ function ReserveModal({
             Exemplos: 100% do CDI, 105% do CDI ou 110% do CDI.
           </small>
         </label>
-        <button className="submit" onClick={saveReserve}>
-          {goal ? "Salvar alterações" : "Criar reserva"}
+        {formError && <p className="form-error">{formError}</p>}
+        <button className="submit" onClick={saveReserve} disabled={saving}>
+          {saving
+            ? "Salvando..."
+            : goal
+              ? "Salvar alterações"
+              : "Criar reserva"}
         </button>
       </div>
     </div>
