@@ -626,6 +626,34 @@ td {
   background: #173a31;
   color: var(--green);
 }
+.password-card input {
+  display: block;
+  width: 100%;
+  margin: 9px 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  outline: 0;
+  background: #081714;
+  color: #fff;
+}
+.password-card input:focus {
+  border-color: var(--green);
+}
+.password-card .primary {
+  margin-top: 5px;
+}
+.success-text,
+.error-text {
+  display: block;
+  margin-top: 10px;
+}
+.success-text {
+  color: var(--green);
+}
+.error-text {
+  color: #f26b75;
+}
 .file input {
   display: none;
 }

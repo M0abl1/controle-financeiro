@@ -40,6 +40,7 @@ import {
 import type { User } from "firebase/auth";
 import { categories, seedAssets, seedGoals, seedTransactions } from "./data";
 import { load, save } from "./storage";
+import { setAccountPassword } from "./firebase";
 import type { EntryKind, Goal, Pillar, Transaction } from "./types";
 
 type View = "home" | "common" | "reserve" | "investments" | "settings";
@@ -736,6 +737,35 @@ function SettingsView({
   transactions: Transaction[];
   setTransactions: (v: Transaction[]) => void;
 }) {
+  const [accountPassword, setAccountPasswordValue] = useState("");
+  const [confirmAccountPassword, setConfirmAccountPassword] = useState("");
+  const [passwordMessage, setPasswordMessage] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const saveAccountPassword = async () => {
+    setPasswordMessage("");
+    setPasswordError("");
+    if (accountPassword.length < 6) {
+      setPasswordError("A senha deve possuir pelo menos 6 caracteres.");
+      return;
+    }
+    if (accountPassword !== confirmAccountPassword) {
+      setPasswordError("As senhas não são iguais.");
+      return;
+    }
+    try {
+      await setAccountPassword(accountPassword);
+      setPasswordMessage("Senha definida. O login por e-mail já está ativo.");
+      setAccountPasswordValue("");
+      setConfirmAccountPassword("");
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : "";
+      setPasswordError(
+        message.includes("requires-recent-login")
+          ? "Saia e entre novamente com Google antes de definir a senha."
+          : "Não foi possível definir a senha da conta.",
+      );
+    }
+  };
   const exportData = () => {
     const blob = new Blob([JSON.stringify(transactions, null, 2)], {
       type: "application/json",
@@ -797,6 +827,38 @@ function SettingsView({
             login e sincronização em nuvem.
           </p>
           <span className="status">Configuração pendente</span>
+        </article>
+        <article className="panel password-card">
+          <div className="setting-icon">
+            <Shield />
+          </div>
+          <h2>Senha da conta</h2>
+          <p>
+            Vincule uma senha ao e-mail autenticado para entrar sem o Google.
+          </p>
+          <input
+            type="password"
+            autoComplete="new-password"
+            placeholder="Nova senha"
+            value={accountPassword}
+            onChange={(event) => setAccountPasswordValue(event.target.value)}
+          />
+          <input
+            type="password"
+            autoComplete="new-password"
+            placeholder="Confirmar nova senha"
+            value={confirmAccountPassword}
+            onChange={(event) => setConfirmAccountPassword(event.target.value)}
+          />
+          <button className="primary" onClick={saveAccountPassword}>
+            Definir senha
+          </button>
+          {passwordMessage && (
+            <small className="success-text">{passwordMessage}</small>
+          )}
+          {passwordError && (
+            <small className="error-text">{passwordError}</small>
+          )}
         </article>
       </div>
     </section>

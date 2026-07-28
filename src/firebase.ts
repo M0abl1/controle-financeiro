@@ -2,6 +2,7 @@ import { initializeApp } from "firebase/app";
 import {
   browserLocalPersistence,
   createUserWithEmailAndPassword,
+  EmailAuthProvider,
   getAuth,
   GoogleAuthProvider,
   sendPasswordResetEmail,
@@ -9,6 +10,8 @@ import {
   signInWithEmailAndPassword,
   signInWithPopup,
   signOut,
+  linkWithCredential,
+  updatePassword,
 } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
@@ -42,6 +45,19 @@ export async function createAccount(email: string, password: string) {
 export async function resetPassword(email: string) {
   if (!auth) throw new Error("Configure o Firebase no arquivo .env.local");
   return sendPasswordResetEmail(auth, email);
+}
+export async function setAccountPassword(password: string) {
+  if (!auth?.currentUser) throw new Error("Usuário não autenticado");
+  const hasPassword = auth.currentUser.providerData.some(
+    (provider) => provider.providerId === "password",
+  );
+  if (hasPassword) return updatePassword(auth.currentUser, password);
+  if (!auth.currentUser.email) throw new Error("Conta sem e-mail");
+  const credential = EmailAuthProvider.credential(
+    auth.currentUser.email,
+    password,
+  );
+  return linkWithCredential(auth.currentUser, credential);
 }
 export async function logout() {
   if (auth) await signOut(auth);
