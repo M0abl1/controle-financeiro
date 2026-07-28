@@ -484,6 +484,52 @@ h1 {
   color: var(--muted);
   text-align: center;
 }
+.empty-state .primary {
+  margin-top: 18px;
+}
+.section-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 26px 0 14px;
+}
+.section-actions span {
+  color: var(--purple);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+}
+.section-actions h2 {
+  margin: 4px 0 0;
+}
+.goal-actions {
+  display: flex !important;
+  justify-content: flex-end;
+  gap: 8px !important;
+  margin-top: 17px;
+}
+.goal-actions button {
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  padding: 7px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.goal-actions .danger-link {
+  color: #f26b75;
+}
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.field-hint {
+  display: block;
+  color: var(--muted);
+  font-weight: 400;
+  margin-top: 7px;
+}
 .goal-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -949,6 +995,9 @@ td {
   .login-card {
     align-self: center;
   }
+  .section-actions {
+    align-items: flex-end;
+  }
 }
 @media (max-width: 620px) {
   header {
@@ -1001,5 +1050,8 @@ td {
   .login-card {
     padding: 28px;
     width: calc(100% - 28px);
+  }
+  .form-grid {
+    grid-template-columns: 1fr;
   }
 }

@@ -1,4 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 import Decimal from "decimal.js";
 import {
   AreaChart,
@@ -34,7 +40,7 @@ import {
 import type { User } from "firebase/auth";
 import { categories, seedAssets, seedGoals, seedTransactions } from "./data";
 import { load, save } from "./storage";
-import type { EntryKind, Pillar, Transaction } from "./types";
+import type { EntryKind, Goal, Pillar, Transaction } from "./types";
 
 type View = "home" | "common" | "reserve" | "investments" | "settings";
 const money = new Intl.NumberFormat("pt-BR", {
@@ -70,11 +76,15 @@ export default function App({
     load("cf-transactions-v1-clean", seedTransactions),
   );
   const [modal, setModal] = useState<EntryKind | null>(null);
+  const [goals, setGoals] = useState<Goal[]>(() =>
+    load("cf-reserves-v1", seedGoals),
+  );
   const [search, setSearch] = useState("");
   useEffect(
     () => save("cf-transactions-v1-clean", transactions),
     [transactions],
   );
+  useEffect(() => save("cf-reserves-v1", goals), [goals]);
   const income = useMemo(
     () =>
       transactions
@@ -91,7 +101,7 @@ export default function App({
   );
   const balances = {
     common: income * 0.5 - expense,
-    reserve: income * 0.3 + seedGoals.reduce((s, g) => s + g.value, 0),
+    reserve: income * 0.3 + goals.reduce((s, g) => s + g.value, 0),
     investments:
       income * 0.2 +
       seedAssets.reduce((s, a) => s + a.currentPrice * a.quantity, 0),
@@ -170,7 +180,9 @@ export default function App({
             income={income}
           />
         )}
-        {view === "reserve" && <ReserveView />}
+        {view === "reserve" && (
+          <ReserveView goals={goals} setGoals={setGoals} />
+        )}
         {view === "investments" && <InvestmentsView freeCash={income * 0.2} />}
         {view === "settings" && (
           <SettingsView
@@ -423,30 +435,51 @@ function CommonView({
     </section>
   );
 }
-function ReserveView() {
-  const total = seedGoals.reduce((s, g) => s + g.value, 0);
+function ReserveView({
+  goals,
+  setGoals,
+}: {
+  goals: Goal[];
+  setGoals: Dispatch<SetStateAction<Goal[]>>;
+}) {
+  const [editing, setEditing] = useState<Goal | null | "new">(null);
+  const total = goals.reduce((s, g) => s + g.value, 0);
+  const target = goals.reduce((s, g) => s + g.target, 0);
   const projection = Array.from({ length: 13 }, (_, i) => ({
     month: i,
-    value: new Decimal(total)
-      .times(new Decimal(1.009).pow(i))
-      .toNumber(),
+    value: new Decimal(total).times(new Decimal(1.009).pow(i)).toNumber(),
   }));
   return (
     <section className="page">
       <div className="metric-row">
         <Metric label="TOTAL EM RESERVA" value={money.format(total)} />
-        <Metric label="META DE EMERGÊNCIA" value={money.format(0)} />
-        <Metric label="PROGRESSO" value="0%" />
+        <Metric label="META TOTAL" value={money.format(target)} />
+        <Metric
+          label="PROGRESSO"
+          value={`${target > 0 ? Math.round((total / target) * 100) : 0}%`}
+        />
+      </div>
+      <div className="section-actions">
+        <div>
+          <span>COFRINHOS E OBJETIVOS</span>
+          <h2>Minhas reservas</h2>
+        </div>
+        <button className="primary" onClick={() => setEditing("new")}>
+          <Plus /> Nova reserva
+        </button>
       </div>
       <div className="goal-grid">
-        {seedGoals.length === 0 && (
+        {goals.length === 0 && (
           <article className="panel empty-state">
             <Target />
             <h2>Nenhum objetivo criado</h2>
             <p>Configure sua primeira reserva ou objetivo financeiro.</p>
+            <button className="primary" onClick={() => setEditing("new")}>
+              <Plus /> Criar reserva
+            </button>
           </article>
         )}
-        {seedGoals.map((g) => (
+        {goals.map((g) => (
           <article className="goal" key={g.id}>
             <div>
               <Target />
@@ -457,7 +490,25 @@ function ReserveView() {
               {money.format(g.value)} <small>de {money.format(g.target)}</small>
             </strong>
             <div className="progress">
-              <i style={{ width: `${(g.value / g.target) * 100}%` }} />
+              <i
+                style={{
+                  width: `${Math.min(g.target > 0 ? (g.value / g.target) * 100 : 0, 100)}%`,
+                }}
+              />
+            </div>
+            <div className="goal-actions">
+              <button onClick={() => setEditing(g)}>Editar</button>
+              <button
+                className="danger-link"
+                onClick={() => {
+                  if (confirm(`Excluir a reserva "${g.name}"?`))
+                    setGoals((current) =>
+                      current.filter((item) => item.id !== g.id),
+                    );
+                }}
+              >
+                Excluir
+              </button>
             </div>
           </article>
         ))}
@@ -486,7 +537,123 @@ function ReserveView() {
           </AreaChart>
         </ResponsiveContainer>
       </article>
+      {editing && (
+        <ReserveModal
+          goal={editing === "new" ? undefined : editing}
+          close={() => setEditing(null)}
+          submit={(goal) => {
+            setGoals((current) => {
+              const exists = current.some((item) => item.id === goal.id);
+              return exists
+                ? current.map((item) => (item.id === goal.id ? goal : item))
+                : [...current, goal];
+            });
+            setEditing(null);
+          }}
+        />
+      )}
     </section>
+  );
+}
+
+function ReserveModal({
+  goal,
+  close,
+  submit,
+}: {
+  goal?: Goal;
+  close: () => void;
+  submit: (goal: Goal) => void;
+}) {
+  const [name, setName] = useState(goal?.name ?? "");
+  const [value, setValue] = useState(
+    goal
+      ? goal.value.toLocaleString("pt-BR", { minimumFractionDigits: 2 })
+      : "",
+  );
+  const [target, setTarget] = useState(
+    goal
+      ? goal.target.toLocaleString("pt-BR", { minimumFractionDigits: 2 })
+      : "",
+  );
+  const [cdi, setCdi] = useState(String(goal?.cdi ?? 100));
+  const parseMoney = (input: string) =>
+    Number(input.replace(/\./g, "").replace(",", ".")) || 0;
+  const saveReserve = () => {
+    const parsedValue = parseMoney(value);
+    const parsedTarget = parseMoney(target);
+    const parsedCdi = Number(cdi.replace(",", "."));
+    if (!name.trim() || parsedValue < 0 || parsedTarget <= 0 || parsedCdi <= 0)
+      return;
+    submit({
+      id: goal?.id ?? crypto.randomUUID(),
+      name: name.trim(),
+      value: parsedValue,
+      target: parsedTarget,
+      cdi: parsedCdi,
+    });
+  };
+  return (
+    <div
+      className="modal-backdrop"
+      onMouseDown={(event) => event.target === event.currentTarget && close()}
+    >
+      <div className="modal">
+        <div className="modal-head">
+          <div>
+            <span>RESERVA FINANCEIRA</span>
+            <h2>{goal ? "Editar reserva" : "Nova reserva"}</h2>
+          </div>
+          <button onClick={close} aria-label="Fechar">
+            <X />
+          </button>
+        </div>
+        <label>
+          Nome da reserva
+          <input
+            autoFocus
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            placeholder="Ex.: Reserva de emergência"
+          />
+        </label>
+        <div className="form-grid">
+          <label>
+            Saldo atual (R$)
+            <input
+              inputMode="decimal"
+              value={value}
+              onChange={(event) => setValue(event.target.value)}
+              placeholder="0,00"
+            />
+          </label>
+          <label>
+            Meta (R$)
+            <input
+              inputMode="decimal"
+              value={target}
+              onChange={(event) => setTarget(event.target.value)}
+              placeholder="10.000,00"
+            />
+          </label>
+        </div>
+        <label>
+          Rentabilidade (% do CDI)
+          <input
+            inputMode="decimal"
+            value={cdi}
+            onChange={(event) => setCdi(event.target.value)}
+            placeholder="100"
+          />
+          <small className="field-hint">
+            Exemplos: 100% do CDI, 105% do CDI ou 110% do CDI.
+          </small>
+        </label>
+        <button className="submit" onClick={saveReserve}>
+          {goal ? "Salvar alterações" : "Criar reserva"}
+        </button>
+      </div>
+    </div>
   );
 }
 function InvestmentsView({ freeCash }: { freeCash: number }) {
