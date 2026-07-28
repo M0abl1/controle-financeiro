@@ -34,6 +34,7 @@ import {
 import type { User } from "firebase/auth";
 import { categories, seedAssets, seedGoals, seedTransactions } from "./data";
 import { setAccountPassword } from "./firebase";
+import { load } from "./storage";
 import { listReserves, removeReserve, saveReserve } from "./reserveRepository";
 import { listTransactions, saveTransaction } from "./transactionRepository";
 import type { EntryKind, Goal, Pillar, Transaction } from "./types";
@@ -77,12 +78,44 @@ export default function App({
   useEffect(() => {
     if (!currentUser) return;
     let active = true;
+    let migratedLocalData = false;
     const refreshCloudData = async () => {
       try {
-        const [cloudReserves, cloudTransactions] = await Promise.all([
+        let [cloudReserves, cloudTransactions] = await Promise.all([
           listReserves(currentUser.uid),
           listTransactions(currentUser.uid),
         ]);
+        if (!migratedLocalData) {
+          const localReserves = load<Goal[]>("cf-reserves-v2", []);
+          const localTransactions = load<Transaction[]>(
+            "cf-transactions-v1-clean",
+            [],
+          );
+          const cloudReserveIds = new Set(cloudReserves.map((item) => item.id));
+          const cloudTransactionIds = new Set(
+            cloudTransactions.map((item) => item.id),
+          );
+          const missingReserves = localReserves.filter(
+            (item) => !cloudReserveIds.has(item.id),
+          );
+          const missingTransactions = localTransactions.filter(
+            (item) => !cloudTransactionIds.has(item.id),
+          );
+          await Promise.all([
+            ...missingReserves.map((item) =>
+              saveReserve(currentUser.uid, item),
+            ),
+            ...missingTransactions.map((item) =>
+              saveTransaction(currentUser.uid, item),
+            ),
+          ]);
+          cloudReserves = [...cloudReserves, ...missingReserves];
+          cloudTransactions = [
+            ...cloudTransactions,
+            ...missingTransactions,
+          ].sort((a, b) => b.date.localeCompare(a.date));
+          migratedLocalData = true;
+        }
         if (!active) return;
         setGoals(cloudReserves);
         setTransactions(cloudTransactions);
