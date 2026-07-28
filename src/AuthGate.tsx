@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import {
   auth,
+  createAccount,
   db,
   emailLogin,
   firebaseEnabled,
@@ -48,6 +49,8 @@ export function AuthGate({
   const [user, setUser] = useState<User | null>(null);
   const [email, setEmail] = useState("moablima2016@gmail.com");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [formMode, setFormMode] = useState<"login" | "register">("login");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -110,6 +113,33 @@ export function AuthGate({
         code.includes("invalid-credential")
           ? "E-mail ou senha inválidos. Use ‘Definir ou recuperar senha’ se necessário."
           : "Não foi possível entrar com e-mail e senha.",
+      );
+      setStatus("signedOut");
+    }
+  };
+
+  const handleCreateAccount = async (event: FormEvent) => {
+    event.preventDefault();
+    setError("");
+    setNotice("");
+    if (!email.trim() || password.length < 6) {
+      setError("A senha deve possuir pelo menos 6 caracteres.");
+      return;
+    }
+    if (password !== confirmPassword) {
+      setError("As senhas informadas não são iguais.");
+      return;
+    }
+    setStatus("checking");
+    try {
+      const credential = await createAccount(email.trim(), password);
+      await verifyOwner(credential.user);
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : "";
+      setError(
+        message.includes("email-already-in-use")
+          ? "Este e-mail já possui uma conta. Entre ou recupere a senha."
+          : "Não foi possível criar a conta.",
       );
       setStatus("signedOut");
     }
@@ -192,6 +222,10 @@ export function AuthGate({
             <p>
               A conta <b>{user?.email}</b> não possui o cargo <code>dono</code>.
             </p>
+            <div className="uid-box">
+              <small>UID PARA CADASTRO NO FIRESTORE</small>
+              <code>{user?.uid}</code>
+            </div>
             <button className="google-button" onClick={logout}>
               Usar outra conta
             </button>
@@ -207,10 +241,21 @@ export function AuthGate({
         ) : (
           <>
             <span>ÁREA RESTRITA</span>
-            <h2>Entrar na sua conta</h2>
-            <p>Use seu e-mail e senha ou continue com o Google.</p>
+            <h2>
+              {formMode === "login" ? "Entrar na sua conta" : "Criar conta"}
+            </h2>
+            <p>
+              {formMode === "login"
+                ? "Use seu e-mail e senha ou continue com o Google."
+                : "Cadastre um e-mail e uma senha segura no Firebase."}
+            </p>
 
-            <form className="email-login" onSubmit={handleEmailLogin}>
+            <form
+              className="email-login"
+              onSubmit={
+                formMode === "login" ? handleEmailLogin : handleCreateAccount
+              }
+            >
               <label>
                 E-mail
                 <div className="login-input">
@@ -246,19 +291,60 @@ export function AuthGate({
                   </button>
                 </div>
               </label>
+              {formMode === "register" && (
+                <label>
+                  Confirmar senha
+                  <div className="login-input">
+                    <LockKeyhole />
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      autoComplete="new-password"
+                      value={confirmPassword}
+                      onChange={(event) =>
+                        setConfirmPassword(event.target.value)
+                      }
+                      required
+                      minLength={6}
+                    />
+                  </div>
+                </label>
+              )}
               <button className="submit" type="submit">
-                Entrar
+                {formMode === "login" ? "Entrar" : "Criar conta"}
               </button>
             </form>
 
-            <button className="reset-password" onClick={handleResetPassword}>
-              Definir ou recuperar senha
-            </button>
-            <div className="login-divider">
-              <span>ou</span>
-            </div>
-            <button className="google-button" onClick={handleGoogleLogin}>
-              <Chrome /> Continuar com Google
+            {formMode === "login" && (
+              <>
+                <button
+                  className="reset-password"
+                  onClick={handleResetPassword}
+                >
+                  Definir ou recuperar senha
+                </button>
+                <div className="login-divider">
+                  <span>ou</span>
+                </div>
+                <button className="google-button" onClick={handleGoogleLogin}>
+                  <Chrome /> Continuar com Google
+                </button>
+              </>
+            )}
+            <button
+              className="switch-auth-mode"
+              onClick={() => {
+                setFormMode((current) =>
+                  current === "login" ? "register" : "login",
+                );
+                setPassword("");
+                setConfirmPassword("");
+                setError("");
+                setNotice("");
+              }}
+            >
+              {formMode === "login"
+                ? "Ainda não tenho conta"
+                : "Já tenho uma conta"}
             </button>
           </>
         )}

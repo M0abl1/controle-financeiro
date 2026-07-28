@@ -1005,6 +1005,38 @@ td {
 .login-divider + .google-button {
   margin-top: 14px;
 }
+.switch-auth-mode {
+  display: block;
+  width: 100%;
+  margin-top: 18px;
+  padding: 10px;
+  border: 0;
+  background: transparent;
+  color: #c9ddd7;
+  font-size: 12px;
+  cursor: pointer;
+}
+.uid-box {
+  padding: 12px;
+  margin-top: 12px;
+  background: #081714;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.uid-box small,
+.uid-box code {
+  display: block;
+}
+.uid-box small {
+  color: var(--muted);
+  font-size: 9px;
+  letter-spacing: 1px;
+}
+.uid-box code {
+  margin-top: 6px;
+  color: var(--green);
+  overflow-wrap: anywhere;
+}
 .spin {
   animation: spin 1s linear infinite;
   color: var(--green);

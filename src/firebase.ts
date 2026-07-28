@@ -1,6 +1,7 @@
 import { initializeApp } from "firebase/app";
 import {
   browserLocalPersistence,
+  createUserWithEmailAndPassword,
   getAuth,
   GoogleAuthProvider,
   sendPasswordResetEmail,
@@ -32,6 +33,11 @@ export async function emailLogin(email: string, password: string) {
   if (!auth) throw new Error("Configure o Firebase no arquivo .env.local");
   await setPersistence(auth, browserLocalPersistence);
   return signInWithEmailAndPassword(auth, email, password);
+}
+export async function createAccount(email: string, password: string) {
+  if (!auth) throw new Error("Configure o Firebase no arquivo .env.local");
+  await setPersistence(auth, browserLocalPersistence);
+  return createUserWithEmailAndPassword(auth, email, password);
 }
 export async function resetPassword(email: string) {
   if (!auth) throw new Error("Configure o Firebase no arquivo .env.local");
