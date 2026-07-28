@@ -33,9 +33,9 @@ import {
 } from "lucide-react";
 import type { User } from "firebase/auth";
 import { categories, seedAssets, seedGoals, seedTransactions } from "./data";
-import { load, save } from "./storage";
 import { setAccountPassword } from "./firebase";
 import { listReserves, removeReserve, saveReserve } from "./reserveRepository";
+import { listTransactions, saveTransaction } from "./transactionRepository";
 import type { EntryKind, Goal, Pillar, Transaction } from "./types";
 
 type View = "home" | "common" | "reserve" | "investments" | "settings";
@@ -68,29 +68,43 @@ export default function App({
   onLogout?: () => Promise<void>;
 }) {
   const [view, setView] = useState<View>("home");
-  const [transactions, setTransactions] = useState(() =>
-    load("cf-transactions-v1-clean", seedTransactions),
-  );
+  const [transactions, setTransactions] =
+    useState<Transaction[]>(seedTransactions);
   const [modal, setModal] = useState<EntryKind | null>(null);
   const [goals, setGoals] = useState<Goal[]>(seedGoals);
   const [reserveSyncError, setReserveSyncError] = useState("");
   const [search, setSearch] = useState("");
-  useEffect(
-    () => save("cf-transactions-v1-clean", transactions),
-    [transactions],
-  );
   useEffect(() => {
     if (!currentUser) return;
-    listReserves(currentUser.uid)
-      .then((items) => {
-        setGoals(items);
+    let active = true;
+    const refreshCloudData = async () => {
+      try {
+        const [cloudReserves, cloudTransactions] = await Promise.all([
+          listReserves(currentUser.uid),
+          listTransactions(currentUser.uid),
+        ]);
+        if (!active) return;
+        setGoals(cloudReserves);
+        setTransactions(cloudTransactions);
         setReserveSyncError("");
-      })
-      .catch(() =>
-        setReserveSyncError(
-          "Não foi possível carregar as reservas do Firestore.",
-        ),
-      );
+      } catch {
+        if (active)
+          setReserveSyncError(
+            "Não foi possível sincronizar os dados do Firestore.",
+          );
+      }
+    };
+    void refreshCloudData();
+    const interval = window.setInterval(refreshCloudData, 15000);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") void refreshCloudData();
+    };
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
   }, [currentUser]);
 
   const persistReserve = async (goal: Goal) => {
@@ -132,8 +146,19 @@ export default function App({
       seedAssets.reduce((s, a) => s + a.currentPrice * a.quantity, 0),
   };
   const total = balances.common + balances.reserve + balances.investments;
-  const addTransaction = (entry: Omit<Transaction, "id">) =>
-    setTransactions((p) => [{ ...entry, id: crypto.randomUUID() }, ...p]);
+  const addTransaction = async (entry: Omit<Transaction, "id">) => {
+    if (!currentUser) throw new Error("Usuário não autenticado");
+    const transaction = { ...entry, id: crypto.randomUUID() };
+    await saveTransaction(currentUser.uid, transaction);
+    setTransactions((current) => [transaction, ...current]);
+  };
+  const importTransactions = async (items: Transaction[]) => {
+    if (!currentUser) throw new Error("Usuário não autenticado");
+    await Promise.all(
+      items.map((item) => saveTransaction(currentUser.uid, item)),
+    );
+    setTransactions(items);
+  };
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -217,7 +242,7 @@ export default function App({
         {view === "settings" && (
           <SettingsView
             transactions={transactions}
-            setTransactions={setTransactions}
+            setTransactions={importTransactions}
           />
         )}
       </main>
@@ -789,7 +814,7 @@ function SettingsView({
   setTransactions,
 }: {
   transactions: Transaction[];
-  setTransactions: (v: Transaction[]) => void;
+  setTransactions: (v: Transaction[]) => void | Promise<void>;
 }) {
   const [accountPassword, setAccountPasswordValue] = useState("");
   const [confirmAccountPassword, setConfirmAccountPassword] = useState("");
@@ -836,7 +861,7 @@ function SettingsView({
     reader.onload = () => {
       try {
         const data = JSON.parse(String(reader.result));
-        if (Array.isArray(data)) setTransactions(data);
+        if (Array.isArray(data)) void setTransactions(data);
       } catch {
         alert("Arquivo JSON inválido");
       }
@@ -959,25 +984,40 @@ function TransactionModal({
 }: {
   kind: EntryKind;
   close: () => void;
-  submit: (v: Omit<Transaction, "id">) => void;
+  submit: (v: Omit<Transaction, "id">) => Promise<void>;
 }) {
   const [value, setValue] = useState(""),
     [description, setDescription] = useState(""),
     [category, setCategory] = useState("Mercado"),
     [pillar, setPillar] = useState<Pillar>("common");
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState("");
   const numeric = Number(value.replace(/\./g, "").replace(",", ".")) || 0;
-  const confirm = () => {
-    if (numeric <= 0) return;
-    submit({
-      kind,
-      value: numeric,
-      description:
-        description || (kind === "income" ? "Nova entrada" : category),
-      category: kind === "income" ? "Renda" : category,
-      pillar,
-      date: new Date().toISOString().slice(0, 10),
-    });
-    close();
+  const confirm = async () => {
+    setFormError("");
+    if (numeric <= 0) {
+      setFormError("Informe um valor maior que zero.");
+      return;
+    }
+    setSaving(true);
+    try {
+      await submit({
+        kind,
+        value: numeric,
+        description:
+          description || (kind === "income" ? "Nova entrada" : category),
+        category: kind === "income" ? "Renda" : category,
+        pillar,
+        date: new Date().toISOString().slice(0, 10),
+      });
+      close();
+    } catch {
+      setFormError(
+        "Não foi possível salvar no Firestore. Verifique sua conexão.",
+      );
+    } finally {
+      setSaving(false);
+    }
   };
   return (
     <div
@@ -1069,8 +1109,9 @@ function TransactionModal({
             </div>
           </div>
         )}
-        <button className="submit" onClick={confirm}>
-          Confirmar lançamento
+        {formError && <p className="form-error">{formError}</p>}
+        <button className="submit" onClick={confirm} disabled={saving}>
+          {saving ? "Salvando..." : "Confirmar lançamento"}
         </button>
       </div>
     </div>
