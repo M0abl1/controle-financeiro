@@ -6,7 +6,7 @@ import {
   type ReactElement,
 } from "react";
 import { onAuthStateChanged, type User } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
 import {
   Chrome,
   Eye,
@@ -60,7 +60,16 @@ export function AuthGate({
     setUser(currentUser);
     setStatus("checking");
     try {
-      const profile = await getDoc(doc(db, "usuarios", currentUser.uid));
+      const profileRef = doc(db, "usuarios", currentUser.uid);
+      let profile = await getDoc(profileRef);
+      if (!profile.exists()) {
+        await setDoc(profileRef, {
+          email: currentUser.email,
+          cargo: "pendente",
+          criadoEm: serverTimestamp(),
+        });
+        profile = await getDoc(profileRef);
+      }
       if (profile.exists() && profile.data().cargo === "dono") {
         setStatus("authorized");
       } else {
@@ -221,6 +230,10 @@ export function AuthGate({
             <h2>Conta sem autorização</h2>
             <p>
               A conta <b>{user?.email}</b> não possui o cargo <code>dono</code>.
+            </p>
+            <p>
+              O perfil foi criado no Firestore com cargo <code>pendente</code>.
+              Altere-o manualmente para <code>dono</code>.
             </p>
             <div className="uid-box">
               <small>UID PARA CADASTRO NO FIRESTORE</small>
