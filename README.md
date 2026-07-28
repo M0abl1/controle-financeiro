@@ -46,6 +46,8 @@ O aplicativo e as regras verificam esse documento. Escritas em `usuarios` são s
 
 Nunca versione `.env.local`. As chaves públicas do cliente Firebase não substituem as regras de autorização; `firestore.rules` restringe cada usuário ao próprio caminho `users/{uid}`.
 
+Para autenticação por redirecionamento em navegadores móveis, use `m0abl1financas.web.app` como `VITE_FIREBASE_AUTH_DOMAIN`. Isso mantém o fluxo OAuth no mesmo domínio do PWA e evita perda de sessão por bloqueio de armazenamento entre sites.
+
 ## Próximas integrações
 
 A interface funciona imediatamente com armazenamento local. A próxima etapa é conectar os repositórios de lançamentos, objetivos e ativos ao Firestore, além do importador OFX/CSV com tela de validação prévia.
