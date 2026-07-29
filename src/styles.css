@@ -1209,3 +1209,156 @@ td {
     grid-template-columns: 1fr;
   }
 }
+
+/* Tema midnight: preto/azul com detalhes em roxo */
+:root {
+  --card: #0d1428;
+  --line: #25345d;
+  --muted: #94a3c0;
+  --green: #8b5cf6;
+  --purple: #a78bfa;
+  --amber: #60a5fa;
+  color: #f5f7ff;
+  background: #050816;
+}
+body {
+  background:
+    radial-gradient(circle at 82% 0, #172554 0, transparent 30%),
+    radial-gradient(circle at 12% 90%, #2e1065 0, transparent 26%), #050816;
+}
+.sidebar {
+  background: #070b18;
+  border-color: #1e2a4a;
+}
+.brand > span {
+  background: linear-gradient(135deg, #7c3aed, #3b82f6);
+  color: #fff;
+  box-shadow: 0 8px 28px #6d28d955;
+}
+.sidebar nav button:hover,
+.sidebar nav button.active {
+  background: #141d38;
+}
+.sidebar nav button.active svg,
+.sync span,
+.hero small svg,
+.positive,
+.panel-head > svg,
+.setting-icon,
+.login-input:focus-within > svg {
+  color: #a78bfa !important;
+}
+.hero {
+  border-color: #334a86;
+  background: linear-gradient(120deg, #111a36, #0a1024 62%, #20134a), #0a1024;
+  box-shadow: inset 0 1px 0 #ffffff0d;
+}
+.hero-ring {
+  border-color: #24376b;
+  border-right-color: #8b5cf6;
+}
+.pillar,
+.panel,
+.metric,
+.goal {
+  background: linear-gradient(145deg, #10182f, #0b1124);
+  border-color: #25345d;
+  box-shadow: 0 12px 34px #02040d55;
+}
+.pillar-icon,
+.pillar.purple .pillar-icon,
+.pillar.amber .pillar-icon,
+.setting-icon,
+.login-card-icon {
+  background: #1c2450;
+  color: #a78bfa;
+}
+.progress {
+  background: #1b2747;
+}
+.progress i,
+.purple .progress i,
+.amber .progress i {
+  background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+}
+.quick > button,
+.search,
+.modal input,
+.modal select,
+.password-card input,
+.login-input,
+.uid-box {
+  background: #080d1c;
+  border-color: #26365e;
+}
+.quick > button:hover {
+  border-color: #7c3aed;
+  background: #111936;
+}
+.quick > button svg {
+  background: #22275a;
+  color: #a78bfa;
+}
+.primary,
+.submit,
+.fab .income {
+  background: linear-gradient(135deg, #7c3aed, #4f46e5);
+  color: #fff;
+}
+.primary:hover,
+.submit:hover {
+  filter: brightness(1.12);
+}
+.modal {
+  background: #0b1124;
+  border-color: #34467a;
+}
+.modal-backdrop {
+  background: #02040ddd;
+}
+.modal-head button,
+.user-menu > button {
+  background: #151e3a;
+  color: #b9c5df;
+}
+.category-grid button {
+  background: #101831;
+  border-color: #293a65;
+}
+.category-grid button.selected {
+  border-color: #8b5cf6;
+  background: #2b1c55;
+}
+.split {
+  background: #121a35;
+}
+.login-page {
+  background:
+    radial-gradient(circle at 14% 18%, #1e3a8a 0, transparent 34%),
+    radial-gradient(circle at 72% 85%, #3b0764 0, transparent 30%), #050816;
+}
+.login-logo {
+  background: linear-gradient(135deg, #8b5cf6, #3b82f6);
+  color: #fff;
+}
+.login-card {
+  background: #0b1124f2;
+  border-color: #34467a;
+}
+.google-button {
+  background: #f7f8ff;
+  color: #111827;
+  border-color: #c7d2fe;
+}
+.bottom-nav {
+  background: #070b18ef;
+  border-color: #25345d;
+}
+.status {
+  background: #1d2450;
+  color: #a78bfa;
+}
+.chart-wide .recharts-cartesian-axis-tick-value,
+.chart .recharts-cartesian-axis-tick-value {
+  fill: #94a3c0;
+}

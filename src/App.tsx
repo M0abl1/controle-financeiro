@@ -45,13 +45,13 @@ const money = new Intl.NumberFormat("pt-BR", {
   currency: "BRL",
 });
 const colors = [
-  "#1bc98e",
-  "#7c6cf2",
-  "#f0ad4e",
-  "#f45b69",
-  "#46a8e5",
-  "#cf72dc",
-  "#94a3b8",
+  "#8b5cf6",
+  "#3b82f6",
+  "#a78bfa",
+  "#6366f1",
+  "#60a5fa",
+  "#c084fc",
+  "#64748b",
 ];
 const nav = [
   { id: "home", label: "Início", icon: Home },
