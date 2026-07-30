@@ -200,8 +200,8 @@ export function AuthGate({
           <em>Sob seu controle.</em>
         </h1>
         <p>
-          Organize, acompanhe e faça seu patrimônio crescer com a estratégia
-          50/30/20.
+          Organize, acompanhe e distribua sua renda em valores definidos por
+          você.
         </p>
         <div className="security-note">
           <ShieldCheck />

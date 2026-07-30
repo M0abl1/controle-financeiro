@@ -37,7 +37,14 @@ import { setAccountPassword } from "./firebase";
 import { load } from "./storage";
 import { listReserves, removeReserve, saveReserve } from "./reserveRepository";
 import { listTransactions, saveTransaction } from "./transactionRepository";
-import type { EntryKind, Goal, Pillar, Transaction } from "./types";
+import { getDistribution, saveDistribution } from "./distributionRepository";
+import type {
+  Distribution,
+  EntryKind,
+  Goal,
+  Pillar,
+  Transaction,
+} from "./types";
 
 type View = "home" | "common" | "reserve" | "investments" | "settings";
 const money = new Intl.NumberFormat("pt-BR", {
@@ -72,6 +79,11 @@ export default function App({
   const [transactions, setTransactions] =
     useState<Transaction[]>(seedTransactions);
   const [modal, setModal] = useState<EntryKind | null>(null);
+  const [distributionModal, setDistributionModal] = useState(false);
+  const [distribution, setDistribution] = useState<Distribution>({
+    reserve: 0,
+    investments: 0,
+  });
   const [goals, setGoals] = useState<Goal[]>(seedGoals);
   const [reserveSyncError, setReserveSyncError] = useState("");
   const [search, setSearch] = useState("");
@@ -81,10 +93,12 @@ export default function App({
     let migratedLocalData = false;
     const refreshCloudData = async () => {
       try {
-        let [cloudReserves, cloudTransactions] = await Promise.all([
-          listReserves(currentUser.uid),
-          listTransactions(currentUser.uid),
-        ]);
+        let [cloudReserves, cloudTransactions, cloudDistribution] =
+          await Promise.all([
+            listReserves(currentUser.uid),
+            listTransactions(currentUser.uid),
+            getDistribution(currentUser.uid),
+          ]);
         if (!migratedLocalData) {
           const localReserves = load<Goal[]>("cf-reserves-v2", []);
           const localTransactions = load<Transaction[]>(
@@ -119,6 +133,7 @@ export default function App({
         if (!active) return;
         setGoals(cloudReserves);
         setTransactions(cloudTransactions);
+        setDistribution(cloudDistribution);
         setReserveSyncError("");
       } catch {
         if (active)
@@ -164,18 +179,34 @@ export default function App({
         .reduce((s, t) => s + t.value, 0),
     [transactions],
   );
-  const expense = useMemo(
+  const expensesByPillar = useMemo(
     () =>
       transactions
-        .filter((t) => t.kind === "expense")
-        .reduce((s, t) => s + t.value, 0),
+        .filter((transaction) => transaction.kind === "expense")
+        .reduce(
+          (total, transaction) => {
+            total[transaction.pillar] += transaction.value;
+            return total;
+          },
+          { common: 0, reserve: 0, investments: 0 } as Record<Pillar, number>,
+        ),
     [transactions],
   );
+  const allocated = {
+    reserve: Math.max(0, distribution.reserve),
+    investments: Math.max(0, distribution.investments),
+    common: Math.max(
+      0,
+      income - distribution.reserve - distribution.investments,
+    ),
+  };
   const balances = {
-    common: income * 0.5 - expense,
-    reserve: income * 0.3 + goals.reduce((s, g) => s + g.value, 0),
+    common: allocated.common - expensesByPillar.common,
+    reserve:
+      allocated.reserve - expensesByPillar.reserve +
+      goals.reduce((s, g) => s + g.value, 0),
     investments:
-      income * 0.2 +
+      allocated.investments - expensesByPillar.investments +
       seedAssets.reduce((s, a) => s + a.currentPrice * a.quantity, 0),
   };
   const total = balances.common + balances.reserve + balances.investments;
@@ -192,13 +223,22 @@ export default function App({
     );
     setTransactions(items);
   };
+  const persistDistribution = async (next: Distribution) => {
+    if (!currentUser) throw new Error("Usuário não autenticado");
+    if (new Decimal(next.reserve).plus(next.investments).greaterThan(income)) {
+      throw new Error("A distribuição supera a renda disponível");
+    }
+    await saveDistribution(currentUser.uid, next);
+    setDistribution(next);
+    setReserveSyncError("");
+  };
   return (
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand">
           <span>MC</span>
           <div>
-            Meu Controle<small>Finanças 50/30/20</small>
+            Meu Controle<small>Finanças sob seu controle</small>
           </div>
         </div>
         <nav>
@@ -250,9 +290,11 @@ export default function App({
             total={total}
             balances={balances}
             income={income}
-            expense={expense}
+            commonAllocated={allocated.common}
+            commonExpense={expensesByPillar.common}
             transactions={transactions}
             setModal={setModal}
+            onDistribute={() => setDistributionModal(true)}
           />
         )}
         {view === "common" && (
@@ -260,7 +302,7 @@ export default function App({
             transactions={transactions}
             search={search}
             setSearch={setSearch}
-            income={income}
+            budget={allocated.common}
           />
         )}
         {view === "reserve" && (
@@ -271,7 +313,11 @@ export default function App({
             syncError={reserveSyncError}
           />
         )}
-        {view === "investments" && <InvestmentsView freeCash={income * 0.2} />}
+        {view === "investments" && (
+          <InvestmentsView
+            freeCash={allocated.investments - expensesByPillar.investments}
+          />
+        )}
         {view === "settings" && (
           <SettingsView
             transactions={transactions}
@@ -314,6 +360,14 @@ export default function App({
           submit={addTransaction}
         />
       )}
+      {distributionModal && (
+        <DistributionModal
+          totalIncome={income}
+          current={distribution}
+          close={() => setDistributionModal(false)}
+          submit={persistDistribution}
+        />
+      )}
     </div>
   );
 }
@@ -322,16 +376,20 @@ function HomeView({
   total,
   balances,
   income,
-  expense,
+  commonAllocated,
+  commonExpense,
   transactions,
   setModal,
+  onDistribute,
 }: {
   total: number;
   balances: Record<Pillar, number>;
   income: number;
-  expense: number;
+  commonAllocated: number;
+  commonExpense: number;
   transactions: Transaction[];
   setModal: (v: EntryKind) => void;
+  onDistribute: () => void;
 }) {
   return (
     <section className="page">
@@ -345,37 +403,39 @@ function HomeView({
         </div>
         <div className="hero-ring">
           <span>
-            50<small>/30/20</small>
+            100<small>% livre</small>
           </span>
         </div>
       </article>
       <div className="pillar-grid">
         <PillarCard
           title="Uso comum"
-          percent="50%"
+          percent="Saldo"
           value={balances.common}
           icon={<WalletCards />}
           color="green"
-          subtitle={`${money.format(expense)} gastos no mês`}
-          progress={income ? (expense / (income * 0.5)) * 100 : 0}
+          subtitle={`${money.format(commonExpense)} gastos no pilar`}
+          progress={commonAllocated ? (commonExpense / commonAllocated) * 100 : 0}
         />
         <PillarCard
           title="Reserva"
-          percent="30%"
+          percent="Definido"
           value={balances.reserve}
           icon={<Shield />}
           color="purple"
           subtitle="Reserva + objetivos"
-          progress={42}
+          progress={income ? (Math.max(0, balances.reserve) / income) * 100 : 0}
         />
         <PillarCard
           title="Investimentos"
-          percent="20%"
+          percent="Definido"
           value={balances.investments}
           icon={<TrendingUp />}
           color="amber"
           subtitle="Carteira + caixa livre"
-          progress={68}
+          progress={
+            income ? (Math.max(0, balances.investments) / income) * 100 : 0
+          }
         />
       </div>
       <div className="content-grid">
@@ -400,7 +460,14 @@ function HomeView({
             <ArrowDownLeft />
             <div>
               <strong>Registrar entrada</strong>
-              <small>Distribuição automática 50/30/20</small>
+              <small>Valor total entra em Uso comum</small>
+            </div>
+          </button>
+          <button onClick={onDistribute}>
+            <Landmark />
+            <div>
+              <strong>Distribuir saldo</strong>
+              <small>Defina valores em reais para cada setor</small>
             </div>
           </button>
           <button onClick={() => setModal("expense")}>
@@ -452,18 +519,18 @@ function CommonView({
   transactions,
   search,
   setSearch,
-  income,
+  budget,
 }: {
   transactions: Transaction[];
   search: string;
   setSearch: (s: string) => void;
-  income: number;
+  budget: number;
 }) {
   const expenses = transactions.filter((t) => t.kind === "expense"),
     total = expenses.reduce((s, t) => s + t.value, 0),
     daily = Math.max(
       0,
-      (income * 0.5 - total) / Math.max(1, 31 - new Date().getDate()),
+      (budget - total) / Math.max(1, 31 - new Date().getDate()),
     );
   const pie = categories
     .map(([name]) => ({
@@ -479,7 +546,7 @@ function CommonView({
   return (
     <section className="page">
       <div className="metric-row">
-        <Metric label="ORÇAMENTO DO MÊS" value={money.format(income * 0.5)} />
+        <Metric label="ORÇAMENTO DO MÊS" value={money.format(budget)} />
         <Metric label="GASTO ATÉ AGORA" value={money.format(total)} />
         <Metric label="LIMITE DIÁRIO SUGERIDO" value={money.format(daily)} />
       </div>
@@ -1119,32 +1186,125 @@ function TransactionModal({
         )}
         {kind === "income" && numeric > 0 && (
           <div className="split">
-            <p>Distribuição automática</p>
+            <p>DESTINO INICIAL</p>
             <div>
               <span>
-                50%{" "}
-                <b>
-                  {money.format(new Decimal(numeric).times(0.5).toNumber())}
-                </b>
-              </span>
-              <span>
-                30%{" "}
-                <b>
-                  {money.format(new Decimal(numeric).times(0.3).toNumber())}
-                </b>
-              </span>
-              <span>
-                20%{" "}
-                <b>
-                  {money.format(new Decimal(numeric).times(0.2).toNumber())}
-                </b>
+                Uso comum <b>{money.format(numeric)}</b>
               </span>
             </div>
+            <small>
+              Depois, use “Distribuir saldo” para mover valores para Reserva e
+              Investimentos.
+            </small>
           </div>
         )}
         {formError && <p className="form-error">{formError}</p>}
         <button className="submit" onClick={confirm} disabled={saving}>
           {saving ? "Salvando..." : "Confirmar lançamento"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function DistributionModal({
+  totalIncome,
+  current,
+  close,
+  submit,
+}: {
+  totalIncome: number;
+  current: Distribution;
+  close: () => void;
+  submit: (value: Distribution) => Promise<void>;
+}) {
+  const [reserve, setReserve] = useState(
+    current.reserve ? String(current.reserve).replace(".", ",") : "",
+  );
+  const [investments, setInvestments] = useState(
+    current.investments ? String(current.investments).replace(".", ",") : "",
+  );
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState("");
+  const parseMoney = (value: string) =>
+    Number(value.replace(/\./g, "").replace(",", ".")) || 0;
+  const reserveValue = parseMoney(reserve);
+  const investmentsValue = parseMoney(investments);
+  const distributed = new Decimal(reserveValue).plus(investmentsValue);
+  const commonValue = new Decimal(totalIncome).minus(distributed).toNumber();
+
+  const confirm = async () => {
+    setFormError("");
+    if (reserveValue < 0 || investmentsValue < 0) {
+      setFormError("Os valores não podem ser negativos.");
+      return;
+    }
+    if (distributed.greaterThan(totalIncome)) {
+      setFormError("Reserva e investimentos superam a renda disponível.");
+      return;
+    }
+    setSaving(true);
+    try {
+      await submit({ reserve: reserveValue, investments: investmentsValue });
+      close();
+    } catch {
+      setFormError("Não foi possível salvar a distribuição no Firestore.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div
+      className="modal-backdrop"
+      onMouseDown={(event) => event.target === event.currentTarget && close()}
+    >
+      <div className="modal">
+        <div className="modal-head">
+          <div>
+            <span>DISTRIBUIÇÃO MANUAL</span>
+            <h2>Distribuir saldo</h2>
+          </div>
+          <button onClick={close} aria-label="Fechar">
+            <X />
+          </button>
+        </div>
+        <p className="modal-description">
+          Informe quanto da renda total deve ficar em cada setor.
+        </p>
+        <div className="form-grid">
+          <label>
+            Reserva (R$)
+            <input
+              inputMode="decimal"
+              placeholder="0,00"
+              value={reserve}
+              onChange={(event) => setReserve(event.target.value)}
+            />
+          </label>
+          <label>
+            Investimentos (R$)
+            <input
+              inputMode="decimal"
+              placeholder="0,00"
+              value={investments}
+              onChange={(event) => setInvestments(event.target.value)}
+            />
+          </label>
+        </div>
+        <div className="distribution-summary">
+          <div>
+            <span>Renda total</span>
+            <b>{money.format(totalIncome)}</b>
+          </div>
+          <div className={commonValue < 0 ? "invalid" : "remaining"}>
+            <span>Uso comum</span>
+            <b>{money.format(commonValue)}</b>
+          </div>
+        </div>
+        {formError && <p className="form-error">{formError}</p>}
+        <button className="submit" onClick={confirm} disabled={saving}>
+          {saving ? "Salvando..." : "Salvar distribuição"}
         </button>
       </div>
     </div>
