@@ -1,10 +1,10 @@
 # Meu Controle Financeiro
 
-PWA responsivo de finanças pessoais baseado na estratégia 50/30/20.
+PWA responsivo para controle de finanças pessoais com distribuição manual da renda.
 
 ## Recursos implementados
 
-- dashboard consolidado e divisão 50/30/20 com precisão via `decimal.js`;
+- dashboard consolidado e distribuição em reais com precisão via `decimal.js`;
 - entradas e saídas rápidas, categorias e origem do saldo;
 - visão de uso comum com limite diário, busca e gráfico por categoria;
 - reserva, objetivos e projeção de rendimento composto;
