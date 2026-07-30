@@ -16,6 +16,7 @@ import {
   ArrowDownLeft,
   ArrowUpRight,
   BarChart3,
+  CalendarClock,
   Download,
   Home,
   Landmark,
@@ -51,6 +52,13 @@ const money = new Intl.NumberFormat("pt-BR", {
   style: "currency",
   currency: "BRL",
 });
+const localDate = () => {
+  const date = new Date();
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
 const colors = [
   "#8b5cf6",
   "#3b82f6",
@@ -182,7 +190,10 @@ export default function App({
   const expensesByPillar = useMemo(
     () =>
       transactions
-        .filter((transaction) => transaction.kind === "expense")
+        .filter(
+          (transaction) =>
+            transaction.kind === "expense" && transaction.date <= localDate(),
+        )
         .reduce(
           (total, transaction) => {
             total[transaction.pillar] += transaction.value;
@@ -203,10 +214,12 @@ export default function App({
   const balances = {
     common: allocated.common - expensesByPillar.common,
     reserve:
-      allocated.reserve - expensesByPillar.reserve +
+      allocated.reserve -
+      expensesByPillar.reserve +
       goals.reduce((s, g) => s + g.value, 0),
     investments:
-      allocated.investments - expensesByPillar.investments +
+      allocated.investments -
+      expensesByPillar.investments +
       seedAssets.reduce((s, a) => s + a.currentPrice * a.quantity, 0),
   };
   const total = balances.common + balances.reserve + balances.investments;
@@ -415,7 +428,9 @@ function HomeView({
           icon={<WalletCards />}
           color="green"
           subtitle={`${money.format(commonExpense)} gastos no pilar`}
-          progress={commonAllocated ? (commonExpense / commonAllocated) * 100 : 0}
+          progress={
+            commonAllocated ? (commonExpense / commonAllocated) * 100 : 0
+          }
         />
         <PillarCard
           title="Reserva"
@@ -471,10 +486,10 @@ function HomeView({
             </div>
           </button>
           <button onClick={() => setModal("expense")}>
-            <ArrowUpRight />
+            <CalendarClock />
             <div>
-              <strong>Registrar saída</strong>
-              <small>Gasto, resgate ou retirada</small>
+              <strong>Registrar ou agendar saída</strong>
+              <small>Escolha hoje ou uma data futura</small>
             </div>
           </button>
         </article>
@@ -526,8 +541,24 @@ function CommonView({
   setSearch: (s: string) => void;
   budget: number;
 }) {
-  const expenses = transactions.filter((t) => t.kind === "expense"),
-    total = expenses.reduce((s, t) => s + t.value, 0),
+  const expenses = transactions.filter(
+      (transaction) =>
+        transaction.kind === "expense" && transaction.pillar === "common",
+    ),
+    currentExpenses = expenses.filter(
+      (transaction) => transaction.date <= localDate(),
+    ),
+    futureExpenses = expenses.filter(
+      (transaction) => transaction.date > localDate(),
+    ),
+    total = currentExpenses.reduce(
+      (sum, transaction) => sum + transaction.value,
+      0,
+    ),
+    futureTotal = futureExpenses.reduce(
+      (sum, transaction) => sum + transaction.value,
+      0,
+    ),
     daily = Math.max(
       0,
       (budget - total) / Math.max(1, 31 - new Date().getDate()),
@@ -535,7 +566,7 @@ function CommonView({
   const pie = categories
     .map(([name]) => ({
       name,
-      value: expenses
+      value: currentExpenses
         .filter((t) => t.category === name)
         .reduce((s, t) => s + t.value, 0),
     }))
@@ -548,6 +579,7 @@ function CommonView({
       <div className="metric-row">
         <Metric label="ORÇAMENTO DO MÊS" value={money.format(budget)} />
         <Metric label="GASTO ATÉ AGORA" value={money.format(total)} />
+        <Metric label="SAÍDAS FUTURAS" value={money.format(futureTotal)} />
         <Metric label="LIMITE DIÁRIO SUGERIDO" value={money.format(daily)} />
       </div>
       <div className="content-grid">
@@ -1058,7 +1090,10 @@ function TransactionList({ transactions }: { transactions: Transaction[] }) {
         <p className="empty">Nenhum lançamento encontrado.</p>
       )}
       {transactions.map((t) => (
-        <div className="transaction" key={t.id}>
+        <div
+          className={`transaction ${t.kind === "expense" && t.date > localDate() ? "future" : ""}`}
+          key={t.id}
+        >
           <span className={t.kind}>
             <span>{t.kind === "income" ? "↙" : "↗"}</span>
           </span>
@@ -1067,6 +1102,9 @@ function TransactionList({ transactions }: { transactions: Transaction[] }) {
             <small>
               {t.category} ·{" "}
               {new Date(`${t.date}T12:00:00`).toLocaleDateString("pt-BR")}
+              {t.kind === "expense" && t.date > localDate() && (
+                <span className="future-badge">Agendada</span>
+              )}
             </small>
           </div>
           <strong className={t.kind === "income" ? "positive" : ""}>
@@ -1089,7 +1127,8 @@ function TransactionModal({
   const [value, setValue] = useState(""),
     [description, setDescription] = useState(""),
     [category, setCategory] = useState("Mercado"),
-    [pillar, setPillar] = useState<Pillar>("common");
+    [pillar, setPillar] = useState<Pillar>("common"),
+    [date, setDate] = useState(localDate());
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
   const numeric = Number(value.replace(/\./g, "").replace(",", ".")) || 0;
@@ -1108,7 +1147,7 @@ function TransactionModal({
           description || (kind === "income" ? "Nova entrada" : category),
         category: kind === "income" ? "Renda" : category,
         pillar,
-        date: new Date().toISOString().slice(0, 10),
+        date: kind === "expense" ? date : localDate(),
       });
       close();
     } catch {
@@ -1159,6 +1198,18 @@ function TransactionModal({
         </label>
         {kind === "expense" && (
           <>
+            <label>
+              Data da saída
+              <input
+                type="date"
+                value={date}
+                onChange={(event) => setDate(event.target.value)}
+              />
+              <small className="field-help">
+                Escolha uma data futura para agendar sem descontar do saldo
+                agora.
+              </small>
+            </label>
             <label>
               Origem
               <select
