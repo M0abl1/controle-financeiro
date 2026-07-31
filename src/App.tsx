@@ -203,6 +203,22 @@ export default function App({
         ),
     [transactions],
   );
+  const futureExpensesByPillar = useMemo(
+    () =>
+      transactions
+        .filter(
+          (transaction) =>
+            transaction.kind === "expense" && transaction.date > localDate(),
+        )
+        .reduce(
+          (total, transaction) => {
+            total[transaction.pillar] += transaction.value;
+            return total;
+          },
+          { common: 0, reserve: 0, investments: 0 } as Record<Pillar, number>,
+        ),
+    [transactions],
+  );
   const allocated = {
     reserve: Math.max(0, distribution.reserve),
     investments: Math.max(0, distribution.investments),
@@ -223,6 +239,15 @@ export default function App({
       seedAssets.reduce((s, a) => s + a.currentPrice * a.quantity, 0),
   };
   const total = balances.common + balances.reserve + balances.investments;
+  const projectedBalances = {
+    common: balances.common - futureExpensesByPillar.common,
+    reserve: balances.reserve - futureExpensesByPillar.reserve,
+    investments: balances.investments - futureExpensesByPillar.investments,
+  };
+  const projectedTotal =
+    projectedBalances.common +
+    projectedBalances.reserve +
+    projectedBalances.investments;
   const addTransaction = async (entry: Omit<Transaction, "id">) => {
     if (!currentUser) throw new Error("Usuário não autenticado");
     const transaction = { ...entry, id: crypto.randomUUID() };
@@ -301,7 +326,9 @@ export default function App({
         {view === "home" && (
           <HomeView
             total={total}
+            projectedTotal={projectedTotal}
             balances={balances}
+            projectedBalances={projectedBalances}
             income={income}
             commonAllocated={allocated.common}
             commonExpense={expensesByPillar.common}
@@ -387,7 +414,9 @@ export default function App({
 
 function HomeView({
   total,
+  projectedTotal,
   balances,
+  projectedBalances,
   income,
   commonAllocated,
   commonExpense,
@@ -396,7 +425,9 @@ function HomeView({
   onDistribute,
 }: {
   total: number;
+  projectedTotal: number;
   balances: Record<Pillar, number>;
+  projectedBalances: Record<Pillar, number>;
   income: number;
   commonAllocated: number;
   commonExpense: number;
@@ -410,9 +441,12 @@ function HomeView({
         <div>
           <span>PATRIMÔNIO TOTAL</span>
           <strong>{money.format(total)}</strong>
-          <small>
-            <TrendingUp size={14} /> visão consolidada dos três pilares
-          </small>
+          <div className="projected-total">
+            <CalendarClock size={14} />
+            <span>
+              Após gastos agendados <b>{money.format(projectedTotal)}</b>
+            </span>
+          </div>
         </div>
         <div className="hero-ring">
           <span>
@@ -425,6 +459,7 @@ function HomeView({
           title="Uso comum"
           percent="Saldo"
           value={balances.common}
+          projectedValue={projectedBalances.common}
           icon={<WalletCards />}
           color="green"
           subtitle={`${money.format(commonExpense)} gastos no pilar`}
@@ -436,6 +471,7 @@ function HomeView({
           title="Reserva"
           percent="Definido"
           value={balances.reserve}
+          projectedValue={projectedBalances.reserve}
           icon={<Shield />}
           color="purple"
           subtitle="Reserva + objetivos"
@@ -445,6 +481,7 @@ function HomeView({
           title="Investimentos"
           percent="Definido"
           value={balances.investments}
+          projectedValue={projectedBalances.investments}
           icon={<TrendingUp />}
           color="amber"
           subtitle="Carteira + caixa livre"
@@ -501,6 +538,7 @@ function PillarCard({
   title,
   percent,
   value,
+  projectedValue,
   icon,
   color,
   subtitle,
@@ -509,6 +547,7 @@ function PillarCard({
   title: string;
   percent: string;
   value: number;
+  projectedValue: number;
   icon: React.ReactNode;
   color: string;
   subtitle: string;
@@ -521,7 +560,12 @@ function PillarCard({
         <b>{percent}</b>
       </div>
       <small>{title.toUpperCase()}</small>
+      <span className="balance-label">Saldo atual</span>
       <strong>{money.format(value)}</strong>
+      <div className="projected-balance">
+        <span>Após gastos agendados</span>
+        <b>{money.format(projectedValue)}</b>
+      </div>
       <div className="progress">
         <i style={{ width: `${Math.min(progress, 100)}%` }} />
       </div>
