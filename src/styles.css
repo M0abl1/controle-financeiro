@@ -503,6 +503,30 @@ h1 {
   border-radius: 50%;
   margin-right: 5px;
 }
+.legend button {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 7px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.legend button:hover,
+.legend button:focus-visible {
+  border-color: var(--line);
+  background: #ffffff08;
+  color: #fff;
+  outline: none;
+}
+.category-slice {
+  cursor: pointer;
+  transition: opacity 0.18s ease;
+}
+.category-slice:hover {
+  opacity: 0.78;
+}
 .search {
   display: flex;
   align-items: center;
@@ -883,6 +907,82 @@ td {
 }
 .distribution-summary .invalid {
   color: #f26b75;
+}
+.category-details {
+  width: min(720px, 100%);
+}
+.category-budget-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.category-budget-summary > div {
+  padding: 15px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #0d0f12;
+}
+.category-budget-summary small,
+.category-budget-summary strong {
+  display: block;
+}
+.category-budget-summary small {
+  margin-bottom: 7px;
+  color: var(--muted);
+  font-size: 9px;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+}
+.category-budget-summary strong {
+  font-size: 19px;
+}
+.category-budget-progress {
+  height: 8px;
+  margin-top: 18px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #24272c;
+}
+.category-budget-progress i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #19d99b, #9b87f5);
+}
+.category-budget-caption {
+  margin: 9px 0 20px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.category-expense-list {
+  max-height: 390px;
+  overflow-y: auto;
+  padding-right: 5px;
+}
+.category-list-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 8px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+  color: #19d99b;
+  font-size: 10px;
+  letter-spacing: 1.2px;
+}
+.category-list-title.scheduled {
+  margin-top: 18px;
+  color: #a78bfa;
+}
+.category-list-title b {
+  display: grid;
+  width: 23px;
+  height: 23px;
+  place-items: center;
+  border-radius: 50%;
+  background: #17191e;
+  color: #fff;
+  font-size: 10px;
 }
 .submit {
   width: 100%;
@@ -1821,5 +1921,11 @@ header h1 {
   }
   .category-grid {
     grid-template-columns: repeat(2, 1fr);
+  }
+  .category-budget-summary {
+    grid-template-columns: 1fr;
+  }
+  .category-details {
+    padding: 22px;
   }
 }

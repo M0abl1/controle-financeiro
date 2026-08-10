@@ -600,6 +600,7 @@ function CommonView({
   setSearch: (s: string) => void;
   budget: number;
 }) {
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const expenses = transactions.filter(
       (transaction) =>
         transaction.kind === "expense" && transaction.pillar === "common",
@@ -648,8 +649,13 @@ function CommonView({
           <ResponsiveContainer width="100%" height={260}>
             <PieChart>
               <Pie data={pie} innerRadius={68} outerRadius={98} dataKey="value">
-                {pie.map((_, i) => (
-                  <Cell key={i} fill={colors[i % colors.length]} />
+                {pie.map((item, i) => (
+                  <Cell
+                    className="category-slice"
+                    key={item.name}
+                    fill={colors[i % colors.length]}
+                    onClick={() => setSelectedCategory(item.name)}
+                  />
                 ))}
               </Pie>
               <Tooltip formatter={(v) => money.format(Number(v))} />
@@ -657,10 +663,10 @@ function CommonView({
           </ResponsiveContainer>
           <div className="legend">
             {pie.map((p, i) => (
-              <span key={p.name}>
+              <button key={p.name} onClick={() => setSelectedCategory(p.name)}>
                 <i style={{ background: colors[i] }} />
                 {p.name}
-              </span>
+              </button>
             ))}
           </div>
         </article>
@@ -678,7 +684,101 @@ function CommonView({
           <TransactionList transactions={filtered} />
         </article>
       </div>
+      {selectedCategory && (
+        <CategoryDetailsModal
+          category={selectedCategory}
+          budget={budget}
+          expenses={expenses.filter(
+            (transaction) => transaction.category === selectedCategory,
+          )}
+          close={() => setSelectedCategory(null)}
+        />
+      )}
     </section>
+  );
+}
+
+function CategoryDetailsModal({
+  category,
+  budget,
+  expenses,
+  close,
+}: {
+  category: string;
+  budget: number;
+  expenses: Transaction[];
+  close: () => void;
+}) {
+  const currentExpenses = expenses.filter(
+    (transaction) => transaction.date <= localDate(),
+  );
+  const scheduledExpenses = expenses.filter(
+    (transaction) => transaction.date > localDate(),
+  );
+  const spent = currentExpenses.reduce(
+    (total, transaction) => total + transaction.value,
+    0,
+  );
+  const scheduled = scheduledExpenses.reduce(
+    (total, transaction) => total + transaction.value,
+    0,
+  );
+  const percentage = budget > 0 ? (spent / budget) * 100 : 0;
+
+  return (
+    <div
+      className="modal-backdrop"
+      onMouseDown={(event) => event.target === event.currentTarget && close()}
+    >
+      <div className="modal category-details" role="dialog" aria-modal="true">
+        <div className="modal-head">
+          <div>
+            <span>DETALHES DA CATEGORIA</span>
+            <h2>{category}</h2>
+          </div>
+          <button onClick={close} aria-label="Fechar">
+            <X />
+          </button>
+        </div>
+        <div className="category-budget-summary">
+          <div>
+            <small>Total gasto</small>
+            <strong>{money.format(spent)}</strong>
+          </div>
+          <div>
+            <small>Do orçamento</small>
+            <strong>{percentage.toFixed(1).replace(".", ",")}%</strong>
+          </div>
+          <div>
+            <small>Agendado</small>
+            <strong>{money.format(scheduled)}</strong>
+          </div>
+        </div>
+        <div className="category-budget-progress">
+          <i style={{ width: `${Math.min(percentage, 100)}%` }} />
+        </div>
+        <p className="category-budget-caption">
+          Esta categoria consumiu {percentage.toFixed(1).replace(".", ",")}% do
+          orçamento total de {money.format(budget)}.
+        </p>
+        <div className="category-expense-list">
+          <div className="category-list-title">
+            <span>SAÍDAS CONFIRMADAS</span>
+            <b>{currentExpenses.length}</b>
+          </div>
+          <TransactionList transactions={currentExpenses} />
+          {scheduledExpenses.length > 0 && (
+            <>
+              <div className="category-list-title scheduled">
+                <span>SAÍDAS AGENDADAS</span>
+                <b>{scheduledExpenses.length}</b>
+              </div>
+              <TransactionList transactions={scheduledExpenses} />
+            </>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 function ReserveView({
