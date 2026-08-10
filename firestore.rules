@@ -1,20 +1,97 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    function signedIn() { return request.auth != null; }
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function owns(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    function validAmount(value) {
+      return value is number && value >= 0 && value <= 1000000000000;
+    }
+
+    function validText(value, maxLength) {
+      return value is string && value.size() > 0 && value.size() <= maxLength;
+    }
+
+    function validDate(value) {
+      return value is string
+        && value.matches('^\\d{4}-\\d{2}-\\d{2}$');
+    }
+
+    function validTransaction() {
+      return request.resource.data.keys().hasOnly([
+          'kind', 'value', 'description', 'category', 'pillar', 'date'
+        ])
+        && request.resource.data.kind in ['income', 'expense']
+        && validAmount(request.resource.data.value)
+        && request.resource.data.value > 0
+        && validText(request.resource.data.description, 200)
+        && validText(request.resource.data.category, 80)
+        && request.resource.data.pillar in [
+          'common', 'reserve', 'investments'
+        ]
+        && validDate(request.resource.data.date);
+    }
+
+    function validReserve() {
+      return request.resource.data.keys().hasOnly([
+          'name', 'value', 'target', 'cdi'
+        ])
+        && validText(request.resource.data.name, 100)
+        && validAmount(request.resource.data.value)
+        && validAmount(request.resource.data.target)
+        && request.resource.data.target > 0
+        && request.resource.data.cdi is number
+        && request.resource.data.cdi > 0
+        && request.resource.data.cdi <= 10000;
+    }
+
+    function validDistribution() {
+      return request.resource.data.keys().hasOnly(['reserve', 'investments'])
+        && validAmount(request.resource.data.reserve)
+        && validAmount(request.resource.data.investments);
+    }
+
     match /usuarios/{uid} {
-      allow read: if signedIn() && request.auth.uid == uid;
-      allow create: if signedIn()
-        && request.auth.uid == uid
+      allow read: if owns(uid);
+      allow create: if owns(uid)
         && request.resource.data.keys().hasOnly(['email', 'cargo', 'criadoEm'])
+        && request.resource.data.email is string
+        && request.resource.data.email.size() <= 254
         && request.resource.data.email == request.auth.token.email
         && request.resource.data.cargo == 'usuario'
         && request.resource.data.criadoEm == request.time;
       allow update, delete: if false;
     }
-    match /dados/{uid}/{document=**} {
-      allow read, write: if signedIn() && request.auth.uid == uid;
+
+    match /dados/{uid}/lancamentos/{transactionId} {
+      allow read: if owns(uid);
+      allow create, update: if owns(uid)
+        && transactionId.size() <= 128
+        && validTransaction();
+      allow delete: if owns(uid);
     }
-    match /{document=**} { allow read, write: if false; }
+
+    match /dados/{uid}/reservas/{reserveId} {
+      allow read: if owns(uid);
+      allow create, update: if owns(uid)
+        && reserveId.size() <= 128
+        && validReserve();
+      allow delete: if owns(uid);
+    }
+
+    match /dados/{uid}/configuracoes/distribuicao {
+      allow read: if owns(uid);
+      allow create, update: if owns(uid) && validDistribution();
+      allow delete: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
   }
 }
