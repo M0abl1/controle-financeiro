@@ -290,6 +290,18 @@ export default function App({
             </button>
           </div>
         </header>
+        <nav className="view-tabs" aria-label="Seções financeiras">
+          {nav.map((item) => (
+            <button
+              className={view === item.id ? "active" : ""}
+              onClick={() => setView(item.id)}
+              key={item.id}
+            >
+              <item.icon size={16} />
+              {item.label}
+            </button>
+          ))}
+        </nav>
         {view === "home" && (
           <HomeView
             total={total}
@@ -404,23 +416,59 @@ function HomeView({
 }) {
   return (
     <section className="page">
-      <article className="hero">
-        <div>
-          <span>PATRIMÔNIO TOTAL</span>
-          <strong>{money.format(total)}</strong>
-          <div className="projected-total">
-            <CalendarClock size={14} />
-            <span>
-              Após gastos agendados <b>{money.format(projectedTotal)}</b>
-            </span>
+      <div className="overview-grid">
+        <article className="hero">
+          <div>
+            <span>VISÃO GERAL DO PATRIMÔNIO</span>
+            <h2>Seu dinheiro pode trabalhar melhor por você.</h2>
+            <p>
+              Acompanhe o saldo atual, organize os setores e antecipe o impacto
+              dos seus gastos agendados.
+            </p>
+            <div className="hero-balance">
+              <small>Saldo atual</small>
+              <strong>{money.format(total)}</strong>
+            </div>
+            <div className="projected-total">
+              <CalendarClock size={14} />
+              <span>
+                Após gastos agendados <b>{money.format(projectedTotal)}</b>
+              </span>
+            </div>
           </div>
-        </div>
-        <div className="hero-ring">
-          <span>
-            100<small>% livre</small>
-          </span>
-        </div>
-      </article>
+        </article>
+        <article className="panel home-summary">
+          <div className="panel-head">
+            <div>
+              <span>RITMO DE GASTOS</span>
+              <h2>{money.format(commonExpense)}</h2>
+            </div>
+            <TrendingUp />
+          </div>
+          <p>Saídas confirmadas no Uso comum</p>
+          <div className="spending-track">
+            <i
+              style={{
+                width: `${Math.min(commonAllocated ? (commonExpense / commonAllocated) * 100 : 0, 100)}%`,
+              }}
+            />
+          </div>
+          <div className="summary-stats">
+            <div>
+              <small>Receitas</small>
+              <b>{money.format(income)}</b>
+            </div>
+            <div>
+              <small>Agendado</small>
+              <b>{money.format(Math.max(0, total - projectedTotal))}</b>
+            </div>
+            <div>
+              <small>Lançamentos</small>
+              <b>{transactions.length}</b>
+            </div>
+          </div>
+        </article>
+      </div>
       <div className="pillar-grid">
         <PillarCard
           title="Uso comum"

@@ -1454,3 +1454,372 @@ body {
 .chart .recharts-cartesian-axis-tick-value {
   fill: #94a3c0;
 }
+
+/* Interface financeira compacta inspirada no painel de referência */
+:root {
+  --card: #090a0c;
+  --line: #292b31;
+  --muted: #9296a2;
+  --green: #19d99b;
+  --purple: #9b87f5;
+  --amber: #7aa7ff;
+  background: #050607;
+  color: #f7f8fb;
+}
+body {
+  background: #050607;
+}
+.sidebar {
+  width: 64px;
+  padding: 16px 11px;
+  background: #07080a;
+  border-color: #24262b;
+}
+.brand {
+  justify-content: center;
+}
+.brand > span {
+  width: 38px;
+  height: 38px;
+  border: 1px solid #30333a;
+  border-radius: 11px;
+  background: #0c0d10;
+  box-shadow: none;
+  color: #f5f7fa;
+  font-size: 11px;
+}
+.brand > div,
+.sync {
+  display: none;
+}
+.sidebar nav {
+  margin-top: 26px;
+  gap: 10px;
+}
+.sidebar nav button {
+  width: 42px;
+  height: 42px;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  font-size: 0;
+}
+.sidebar nav button:hover,
+.sidebar nav button.active {
+  background: #111316;
+  border-color: #34373d;
+}
+.sidebar nav button.active svg {
+  color: #fff;
+}
+main:not(.login-page) {
+  max-width: none;
+  margin-left: 64px;
+  padding: 18px clamp(22px, 5vw, 92px) 88px;
+}
+header {
+  min-height: 48px;
+  margin-bottom: 12px;
+}
+header p {
+  display: none;
+}
+header h1 {
+  font-size: 15px;
+  color: #aeb2bc;
+}
+.user-menu {
+  padding: 5px 7px 5px 12px;
+  border: 1px solid #2a2d33;
+  border-radius: 999px;
+  background: #0b0c0f;
+}
+.user-menu .avatar {
+  width: 32px;
+  height: 32px;
+}
+.user-menu > button {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: transparent;
+}
+.view-tabs {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin: 18px 0 54px;
+}
+.view-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border: 1px solid #2a2d33;
+  border-radius: 999px;
+  background: #07080a;
+  color: #c2c5cd;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.view-tabs button:hover {
+  border-color: #4a4e57;
+  color: #fff;
+}
+.view-tabs button.active {
+  border-color: #16865f;
+  background: #0a2e24;
+  color: #2ee5a8;
+  box-shadow: 0 0 22px #16d99b1f;
+}
+.page {
+  max-width: 1600px;
+  margin: 0 auto;
+}
+.overview-grid {
+  display: grid;
+  grid-template-columns: 1.08fr 1fr;
+  gap: 16px;
+}
+.hero,
+.pillar,
+.panel,
+.metric,
+.goal {
+  background: #090a0c;
+  border: 1px solid #292b31;
+  box-shadow: none;
+}
+.hero {
+  min-height: 310px;
+  padding: 30px;
+  border-radius: 12px;
+  background:
+    linear-gradient(120deg, #090a0cdd, #090a0cf7),
+    radial-gradient(circle at 25% 0, #123c30, transparent 48%);
+}
+.hero > div:first-child {
+  width: 100%;
+  height: 100%;
+}
+.hero > div > span {
+  color: #19d99b;
+}
+.hero h2 {
+  max-width: 660px;
+  margin: 10px 0 8px;
+  color: #25dca1;
+  font-size: clamp(23px, 2.1vw, 34px);
+  letter-spacing: -1.2px;
+}
+.hero p {
+  max-width: 650px;
+  margin: 0;
+  color: #c3c6ce;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.hero-balance {
+  margin-top: auto;
+  padding-top: 40px;
+}
+.hero-balance small {
+  color: #858a96;
+  font-size: 10px;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+}
+.hero-balance strong {
+  display: block;
+  margin: 4px 0 8px;
+  font-size: clamp(31px, 3vw, 46px);
+}
+.projected-total {
+  color: #a8acb6;
+}
+.home-summary {
+  display: flex;
+  min-height: 310px;
+  flex-direction: column;
+  padding: 30px;
+  border-radius: 12px;
+}
+.home-summary .panel-head h2 {
+  margin-top: 8px;
+  font-size: clamp(30px, 3vw, 43px);
+}
+.home-summary > p {
+  margin: -4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.spending-track {
+  height: 7px;
+  margin: auto 0 28px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #24272c;
+}
+.spending-track i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #16d99b, #9b87f5);
+}
+.summary-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.summary-stats > div {
+  padding: 14px;
+  border: 1px solid #25282e;
+  border-radius: 9px;
+  background: #111215;
+}
+.summary-stats small,
+.summary-stats b {
+  display: block;
+}
+.summary-stats small {
+  margin-bottom: 7px;
+  color: #7e828c;
+  font-size: 9px;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+}
+.summary-stats b {
+  font-size: 14px;
+}
+.pillar-grid {
+  gap: 16px;
+  margin: 16px 0;
+}
+.pillar,
+.panel,
+.metric,
+.goal {
+  border-radius: 12px;
+}
+.pillar {
+  padding: 20px;
+}
+.pillar-icon,
+.pillar.purple .pillar-icon,
+.pillar.amber .pillar-icon,
+.setting-icon {
+  border: 1px solid #30333a;
+  background: #111317;
+  color: #c8ccd5;
+}
+.projected-balance,
+.quick > button,
+.search,
+.modal input,
+.modal select,
+.password-card input,
+.uid-box {
+  border-color: #292c32;
+  background: #0d0f12;
+}
+.progress {
+  background: #24272c;
+}
+.progress i,
+.purple .progress i,
+.amber .progress i {
+  background: #19d99b;
+}
+.content-grid {
+  grid-template-columns: 1.25fr 0.75fr;
+}
+.panel {
+  padding: 24px;
+}
+.quick > button {
+  border-radius: 9px;
+}
+.quick > button:hover {
+  border-color: #16865f;
+  background: #101614;
+}
+.quick > button svg,
+.quick button + button svg {
+  background: #11231d;
+  color: #22dba0;
+}
+.transaction {
+  border-color: #24272c;
+}
+.modal {
+  background: #090a0c;
+  border-color: #35383f;
+}
+.fab .income,
+.primary,
+.submit {
+  background: #19d99b;
+  color: #04130e;
+}
+.bottom-nav {
+  background: #08090bea;
+  border-color: #292b31;
+}
+
+@media (max-width: 950px) {
+  main:not(.login-page) {
+    margin-left: 0;
+    padding: 16px 18px 96px;
+  }
+  .view-tabs {
+    justify-content: flex-start;
+    margin: 8px -18px 24px;
+    padding: 0 18px 8px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .view-tabs::-webkit-scrollbar {
+    display: none;
+  }
+  .view-tabs button {
+    flex: 0 0 auto;
+  }
+  .overview-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 620px) {
+  header h1,
+  .user-menu > div:first-child {
+    display: none;
+  }
+  header {
+    justify-content: flex-end;
+  }
+  .hero,
+  .home-summary {
+    min-height: 280px;
+    padding: 22px;
+  }
+  .hero h2 {
+    font-size: 25px;
+  }
+  .hero p {
+    font-size: 13px;
+  }
+  .summary-stats {
+    grid-template-columns: 1fr;
+  }
+  .home-summary {
+    min-height: 380px;
+  }
+  .content-grid {
+    grid-template-columns: 1fr;
+  }
+  .category-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
