@@ -2,23 +2,18 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() { return request.auth != null; }
-    function isOwner() {
-      return signedIn()
-        && exists(/databases/$(database)/documents/usuarios/$(request.auth.uid))
-        && get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.cargo == 'dono';
-    }
     match /usuarios/{uid} {
       allow read: if signedIn() && request.auth.uid == uid;
       allow create: if signedIn()
         && request.auth.uid == uid
         && request.resource.data.keys().hasOnly(['email', 'cargo', 'criadoEm'])
         && request.resource.data.email == request.auth.token.email
-        && request.resource.data.cargo == 'pendente'
+        && request.resource.data.cargo == 'usuario'
         && request.resource.data.criadoEm == request.time;
       allow update, delete: if false;
     }
-    match /dados/{document=**} {
-      allow read, write: if isOwner();
+    match /dados/{uid}/{document=**} {
+      allow read, write: if signedIn() && request.auth.uid == uid;
     }
     match /{document=**} { allow read, write: if false; }
   }

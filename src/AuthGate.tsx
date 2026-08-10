@@ -47,7 +47,7 @@ export function AuthGate({
     firebaseEnabled ? "loading" : "configError",
   );
   const [user, setUser] = useState<User | null>(null);
-  const [email, setEmail] = useState("moablima2016@gmail.com");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [formMode, setFormMode] = useState<"login" | "register">("login");
@@ -55,7 +55,7 @@ export function AuthGate({
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
-  const verifyOwner = async (currentUser: User) => {
+  const verifyUser = async (currentUser: User) => {
     if (!db) return;
     setUser(currentUser);
     setStatus("checking");
@@ -65,12 +65,12 @@ export function AuthGate({
       if (!profile.exists()) {
         await setDoc(profileRef, {
           email: currentUser.email,
-          cargo: "pendente",
+          cargo: "usuario",
           criadoEm: serverTimestamp(),
         });
         profile = await getDoc(profileRef);
       }
-      if (profile.exists() && profile.data().cargo === "dono") {
+      if (profile.exists()) {
         setStatus("authorized");
       } else {
         setStatus("denied");
@@ -98,7 +98,7 @@ export function AuthGate({
         setStatus("signedOut");
         return;
       }
-      await verifyOwner(currentUser);
+      await verifyUser(currentUser);
     });
 
     return () => {
@@ -115,7 +115,7 @@ export function AuthGate({
     setStatus("checking");
     try {
       const credential = await emailLogin(email.trim(), password);
-      await verifyOwner(credential.user);
+      await verifyUser(credential.user);
     } catch (cause) {
       const code = cause instanceof Error ? cause.message : "";
       setError(
@@ -142,7 +142,7 @@ export function AuthGate({
     setStatus("checking");
     try {
       const credential = await createAccount(email.trim(), password);
-      await verifyOwner(credential.user);
+      await verifyUser(credential.user);
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : "";
       setError(
@@ -160,7 +160,7 @@ export function AuthGate({
     setStatus("checking");
     try {
       const credential = await googleLogin();
-      await verifyOwner(credential.user);
+      await verifyUser(credential.user);
     } catch (cause) {
       const message =
         cause instanceof Error ? cause.message : "Falha ao entrar com Google.";
@@ -208,7 +208,7 @@ export function AuthGate({
           <div>
             <b>Acesso privado e protegido</b>
             <small>
-              Somente a conta com cargo dono no Firebase pode acessar os dados.
+              Cada usuário acessa somente os próprios dados financeiros.
             </small>
           </div>
         </div>
@@ -227,16 +227,13 @@ export function AuthGate({
         ) : status === "denied" ? (
           <>
             <span>ACESSO NEGADO</span>
-            <h2>Conta sem autorização</h2>
+            <h2>Não foi possível criar o perfil</h2>
             <p>
-              A conta <b>{user?.email}</b> não possui o cargo <code>dono</code>.
-            </p>
-            <p>
-              O perfil foi criado no Firestore com cargo <code>pendente</code>.
-              Altere-o manualmente para <code>dono</code>.
+              A conta <b>{user?.email}</b> foi autenticada, mas o perfil não
+              pôde ser validado no Firestore.
             </p>
             <div className="uid-box">
-              <small>UID PARA CADASTRO NO FIRESTORE</small>
+              <small>UID DA CONTA</small>
               <code>{user?.uid}</code>
             </div>
             <button className="google-button" onClick={logout}>
@@ -253,14 +250,14 @@ export function AuthGate({
           </>
         ) : (
           <>
-            <span>ÁREA RESTRITA</span>
+            <span>ÁREA PESSOAL</span>
             <h2>
               {formMode === "login" ? "Entrar na sua conta" : "Criar conta"}
             </h2>
             <p>
               {formMode === "login"
                 ? "Use seu e-mail e senha ou continue com o Google."
-                : "Cadastre um e-mail e uma senha segura no Firebase."}
+                : "Crie sua conta. Seus dados financeiros serão privados e separados dos demais usuários."}
             </p>
 
             <form
@@ -288,7 +285,9 @@ export function AuthGate({
                   <LockKeyhole />
                   <input
                     type={showPassword ? "text" : "password"}
-                    autoComplete="current-password"
+                    autoComplete={
+                      formMode === "login" ? "current-password" : "new-password"
+                    }
                     value={password}
                     onChange={(event) => setPassword(event.target.value)}
                     required
