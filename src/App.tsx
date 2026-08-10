@@ -17,9 +17,11 @@ import {
   ArrowUpRight,
   BarChart3,
   CalendarClock,
+  CalendarDays,
   Download,
   Home,
   Landmark,
+  ListFilter,
   LogOut,
   Menu,
   Plus,
@@ -27,26 +29,45 @@ import {
   Settings,
   Shield,
   Target,
+  Tags,
   TrendingUp,
   Upload,
   WalletCards,
   X,
 } from "lucide-react";
 import type { User } from "firebase/auth";
-import { categories, seedAssets, seedGoals, seedTransactions } from "./data";
+import {
+  categories as defaultCategories,
+  seedAssets,
+  seedGoals,
+  seedTransactions,
+} from "./data";
 import { setAccountPassword } from "./firebase";
 import { listReserves, removeReserve, saveReserve } from "./reserveRepository";
 import { listTransactions, saveTransaction } from "./transactionRepository";
 import { getDistribution, saveDistribution } from "./distributionRepository";
+import {
+  listCategories,
+  removeCategory,
+  saveCategory,
+} from "./categoryRepository";
 import type {
   Distribution,
   EntryKind,
   Goal,
   Pillar,
   Transaction,
+  UserCategory,
 } from "./types";
 
-type View = "home" | "common" | "reserve" | "investments" | "settings";
+type View =
+  | "home"
+  | "transactions"
+  | "common"
+  | "reserve"
+  | "investments"
+  | "categories"
+  | "settings";
 const money = new Intl.NumberFormat("pt-BR", {
   style: "currency",
   currency: "BRL",
@@ -69,9 +90,11 @@ const colors = [
 ];
 const nav = [
   { id: "home", label: "Início", icon: Home },
+  { id: "transactions", label: "Transações", icon: ListFilter },
   { id: "common", label: "Uso comum", icon: WalletCards },
   { id: "reserve", label: "Reserva", icon: Shield },
   { id: "investments", label: "Investimentos", icon: TrendingUp },
+  { id: "categories", label: "Categorias", icon: Tags },
   { id: "settings", label: "Configurações", icon: Settings },
 ] as const;
 
@@ -92,6 +115,7 @@ export default function App({
     investments: 0,
   });
   const [goals, setGoals] = useState<Goal[]>(seedGoals);
+  const [userCategories, setUserCategories] = useState<UserCategory[]>([]);
   const [reserveSyncError, setReserveSyncError] = useState("");
   const [search, setSearch] = useState("");
   useEffect(() => {
@@ -99,16 +123,22 @@ export default function App({
     let active = true;
     const refreshCloudData = async () => {
       try {
-        const [cloudReserves, cloudTransactions, cloudDistribution] =
-          await Promise.all([
-            listReserves(currentUser.uid),
-            listTransactions(currentUser.uid),
-            getDistribution(currentUser.uid),
-          ]);
+        const [
+          cloudReserves,
+          cloudTransactions,
+          cloudDistribution,
+          cloudCategories,
+        ] = await Promise.all([
+          listReserves(currentUser.uid),
+          listTransactions(currentUser.uid),
+          getDistribution(currentUser.uid),
+          listCategories(currentUser.uid),
+        ]);
         if (!active) return;
         setGoals(cloudReserves);
         setTransactions(cloudTransactions);
         setDistribution(cloudDistribution);
+        setUserCategories(cloudCategories);
         setReserveSyncError("");
       } catch {
         if (active)
@@ -237,6 +267,36 @@ export default function App({
     setDistribution(next);
     setReserveSyncError("");
   };
+  const persistCategory = async (category: UserCategory) => {
+    if (!currentUser) throw new Error("Usuário não autenticado");
+    await saveCategory(currentUser.uid, category);
+    setUserCategories((current) => {
+      const exists = current.some((item) => item.id === category.id);
+      return exists
+        ? current.map((item) => (item.id === category.id ? category : item))
+        : [...current, category].sort((a, b) =>
+            a.name.localeCompare(b.name, "pt-BR"),
+          );
+    });
+  };
+  const deleteCategory = async (categoryId: string) => {
+    if (!currentUser) throw new Error("Usuário não autenticado");
+    await removeCategory(currentUser.uid, categoryId);
+    setUserCategories((current) =>
+      current.filter((item) => item.id !== categoryId),
+    );
+  };
+  const categoryOptions = useMemo(() => {
+    const options: Array<readonly [string, string]> = [...defaultCategories];
+    const names = new Set(options.map(([name]) => name.toLocaleLowerCase()));
+    userCategories.forEach((category) => {
+      if (!names.has(category.name.toLocaleLowerCase())) {
+        options.push([category.name, category.emoji]);
+        names.add(category.name.toLocaleLowerCase());
+      }
+    });
+    return options;
+  }, [userCategories]);
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -316,9 +376,17 @@ export default function App({
             onDistribute={() => setDistributionModal(true)}
           />
         )}
+        {view === "transactions" && (
+          <TransactionsView
+            transactions={transactions}
+            categories={categoryOptions}
+            onNewTransaction={() => setModal("expense")}
+          />
+        )}
         {view === "common" && (
           <CommonView
             transactions={transactions}
+            categories={categoryOptions}
             search={search}
             setSearch={setSearch}
             budget={allocated.common}
@@ -335,6 +403,14 @@ export default function App({
         {view === "investments" && (
           <InvestmentsView
             freeCash={allocated.investments - expensesByPillar.investments}
+          />
+        )}
+        {view === "categories" && (
+          <CategoriesView
+            defaultCategories={defaultCategories}
+            userCategories={userCategories}
+            onSave={persistCategory}
+            onDelete={deleteCategory}
           />
         )}
         {view === "settings" && (
@@ -375,6 +451,7 @@ export default function App({
       {modal && (
         <TransactionModal
           kind={modal}
+          categories={categoryOptions}
           close={() => setModal(null)}
           submit={addTransaction}
         />
@@ -589,13 +666,401 @@ function PillarCard({
   );
 }
 
+function TransactionsView({
+  transactions,
+  categories,
+  onNewTransaction,
+}: {
+  transactions: Transaction[];
+  categories: ReadonlyArray<readonly [string, string]>;
+  onNewTransaction: () => void;
+}) {
+  const today = localDate();
+  const [startDate, setStartDate] = useState(`${today.slice(0, 8)}01`);
+  const [endDate, setEndDate] = useState(today);
+  const [kind, setKind] = useState<"all" | EntryKind>("all");
+  const [pillar, setPillar] = useState<"all" | Pillar>("all");
+  const [category, setCategory] = useState("all");
+  const [sort, setSort] = useState<"newest" | "oldest" | "highest">("newest");
+  const [query, setQuery] = useState("");
+  const categoryNames = Array.from(
+    new Set([
+      ...categories.map(([name]) => name),
+      ...transactions.map((transaction) => transaction.category),
+    ]),
+  ).sort((a, b) => a.localeCompare(b, "pt-BR"));
+  const filtered = transactions
+    .filter(
+      (transaction) =>
+        (!startDate || transaction.date >= startDate) &&
+        (!endDate || transaction.date <= endDate) &&
+        (kind === "all" || transaction.kind === kind) &&
+        (pillar === "all" || transaction.pillar === pillar) &&
+        (category === "all" || transaction.category === category) &&
+        `${transaction.description} ${transaction.category}`
+          .toLocaleLowerCase()
+          .includes(query.trim().toLocaleLowerCase()),
+    )
+    .sort((a, b) => {
+      if (sort === "highest") return b.value - a.value;
+      return sort === "oldest"
+        ? a.date.localeCompare(b.date)
+        : b.date.localeCompare(a.date);
+    });
+  const income = filtered
+    .filter((transaction) => transaction.kind === "income")
+    .reduce((total, transaction) => total + transaction.value, 0);
+  const expense = filtered
+    .filter((transaction) => transaction.kind === "expense")
+    .reduce((total, transaction) => total + transaction.value, 0);
+
+  return (
+    <section className="page transactions-page">
+      <div className="transaction-filters">
+        <label>
+          <CalendarDays />
+          <input
+            type="date"
+            value={startDate}
+            onChange={(event) => setStartDate(event.target.value)}
+            aria-label="Data inicial"
+          />
+          <span>até</span>
+          <input
+            type="date"
+            value={endDate}
+            onChange={(event) => setEndDate(event.target.value)}
+            aria-label="Data final"
+          />
+        </label>
+        <select
+          value={pillar}
+          onChange={(event) => setPillar(event.target.value as "all" | Pillar)}
+          aria-label="Filtrar por setor"
+        >
+          <option value="all">Todos os setores</option>
+          <option value="common">Uso comum</option>
+          <option value="reserve">Reserva</option>
+          <option value="investments">Investimentos</option>
+        </select>
+        <select
+          value={kind}
+          onChange={(event) => setKind(event.target.value as "all" | EntryKind)}
+          aria-label="Filtrar por tipo"
+        >
+          <option value="all">Todas as transações</option>
+          <option value="income">Somente entradas</option>
+          <option value="expense">Somente saídas</option>
+        </select>
+        <select
+          value={sort}
+          onChange={(event) =>
+            setSort(event.target.value as "newest" | "oldest" | "highest")
+          }
+          aria-label="Ordenar transações"
+        >
+          <option value="newest">Data: mais recentes</option>
+          <option value="oldest">Data: mais antigas</option>
+          <option value="highest">Maior valor</option>
+        </select>
+        <select
+          value={category}
+          onChange={(event) => setCategory(event.target.value)}
+          aria-label="Filtrar por categoria"
+        >
+          <option value="all">Todas as categorias</option>
+          {categoryNames.map((name) => (
+            <option value={name} key={name}>
+              {name}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="transaction-summary-grid">
+        <Metric label="TOTAL" value={String(filtered.length)} />
+        <Metric label="DESPESAS" value={money.format(expense)} />
+        <Metric label="RECEITAS" value={money.format(income)} />
+        <Metric label="SALDO" value={money.format(income - expense)} />
+      </div>
+      <article className="panel transaction-table-panel">
+        <div className="transaction-table-tools">
+          <label className="search">
+            <Search />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Buscar transações..."
+            />
+          </label>
+          <button className="primary" onClick={onNewTransaction}>
+            <Plus /> Nova transação
+          </button>
+        </div>
+        <div className="table-wrap">
+          <table className="transaction-table">
+            <thead>
+              <tr>
+                <th>Descrição</th>
+                <th>Categoria</th>
+                <th>Setor</th>
+                <th>Data</th>
+                <th>Status</th>
+                <th>Valor</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="table-empty">
+                    Nenhuma transação encontrada com estes filtros.
+                  </td>
+                </tr>
+              )}
+              {filtered.map((transaction) => (
+                <tr key={transaction.id}>
+                  <td>
+                    <span className={`table-kind ${transaction.kind}`}>
+                      {transaction.kind === "income" ? "↙" : "↗"}
+                    </span>
+                    <b>{transaction.description}</b>
+                  </td>
+                  <td>
+                    <span className="category-chip">
+                      {transaction.category}
+                    </span>
+                  </td>
+                  <td>{pillarLabel(transaction.pillar)}</td>
+                  <td>
+                    {new Date(
+                      `${transaction.date}T12:00:00`,
+                    ).toLocaleDateString("pt-BR")}
+                  </td>
+                  <td>
+                    <span
+                      className={`transaction-status ${transaction.date > today ? "scheduled" : "confirmed"}`}
+                    >
+                      {transaction.date > today ? "Agendada" : "Confirmada"}
+                    </span>
+                  </td>
+                  <td
+                    className={
+                      transaction.kind === "income" ? "positive" : "negative"
+                    }
+                  >
+                    {transaction.kind === "income" ? "+" : "−"}
+                    {money.format(transaction.value)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </article>
+    </section>
+  );
+}
+
+function pillarLabel(pillar: Pillar) {
+  if (pillar === "reserve") return "Reserva";
+  if (pillar === "investments") return "Investimentos";
+  return "Uso comum";
+}
+
+function CategoriesView({
+  defaultCategories,
+  userCategories,
+  onSave,
+  onDelete,
+}: {
+  defaultCategories: ReadonlyArray<readonly [string, string]>;
+  userCategories: UserCategory[];
+  onSave: (category: UserCategory) => Promise<void>;
+  onDelete: (categoryId: string) => Promise<void>;
+}) {
+  const [creating, setCreating] = useState(false);
+  return (
+    <section className="page">
+      <div className="section-actions category-heading">
+        <div>
+          <span>CATEGORIAS</span>
+          <h2>Minhas categorias</h2>
+          <p>Categorias pessoais aparecem somente na sua conta.</p>
+        </div>
+        <button className="primary" onClick={() => setCreating(true)}>
+          <Plus /> Nova categoria
+        </button>
+      </div>
+      <article className="panel category-library">
+        <div className="category-section-title">
+          <div>
+            <span>PADRÕES DO SISTEMA</span>
+            <small>{defaultCategories.length} categorias disponíveis</small>
+          </div>
+        </div>
+        <div className="category-card-grid">
+          {defaultCategories.map(([name, emoji]) => (
+            <div className="category-card" key={name}>
+              <span>{emoji}</span>
+              <div>
+                <b>{name}</b>
+                <small>Padrão</small>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="category-section-title personal">
+          <div>
+            <span>MINHAS CATEGORIAS</span>
+            <small>{userCategories.length} categorias pessoais</small>
+          </div>
+        </div>
+        {userCategories.length === 0 ? (
+          <div className="category-empty">
+            <Tags />
+            <p>Você ainda não criou uma categoria pessoal.</p>
+          </div>
+        ) : (
+          <div className="category-card-grid">
+            {userCategories.map((category) => (
+              <div className="category-card personal" key={category.id}>
+                <span>{category.emoji}</span>
+                <div>
+                  <b>{category.name}</b>
+                  <small>Pessoal</small>
+                </div>
+                <button
+                  className="category-delete"
+                  onClick={async () => {
+                    if (!confirm(`Excluir a categoria "${category.name}"?`))
+                      return;
+                    try {
+                      await onDelete(category.id);
+                    } catch {
+                      alert("Não foi possível excluir a categoria.");
+                    }
+                  }}
+                  aria-label={`Excluir ${category.name}`}
+                >
+                  <X />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </article>
+      {creating && (
+        <CategoryModal
+          existingNames={[
+            ...defaultCategories.map(([name]) => name),
+            ...userCategories.map((category) => category.name),
+          ]}
+          close={() => setCreating(false)}
+          submit={async (category) => {
+            await onSave(category);
+            setCreating(false);
+          }}
+        />
+      )}
+    </section>
+  );
+}
+
+function CategoryModal({
+  existingNames,
+  close,
+  submit,
+}: {
+  existingNames: string[];
+  close: () => void;
+  submit: (category: UserCategory) => Promise<void>;
+}) {
+  const [name, setName] = useState("");
+  const [emoji, setEmoji] = useState("🏷️");
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState("");
+  const save = async () => {
+    const normalizedName = name.trim();
+    setFormError("");
+    if (!normalizedName) {
+      setFormError("Informe o nome da categoria.");
+      return;
+    }
+    if (
+      existingNames.some(
+        (current) =>
+          current.toLocaleLowerCase() === normalizedName.toLocaleLowerCase(),
+      )
+    ) {
+      setFormError("Já existe uma categoria com este nome.");
+      return;
+    }
+    setSaving(true);
+    try {
+      await submit({
+        id: crypto.randomUUID(),
+        name: normalizedName,
+        emoji: emoji.trim() || "🏷️",
+      });
+    } catch {
+      setFormError("Não foi possível salvar a categoria no Firestore.");
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <div
+      className="modal-backdrop"
+      onMouseDown={(event) => event.target === event.currentTarget && close()}
+    >
+      <div className="modal category-modal" role="dialog" aria-modal="true">
+        <div className="modal-head">
+          <div>
+            <span>CATEGORIA PESSOAL</span>
+            <h2>Nova categoria</h2>
+          </div>
+          <button onClick={close} aria-label="Fechar">
+            <X />
+          </button>
+        </div>
+        <div className="category-form-grid">
+          <label>
+            Ícone
+            <input
+              className="emoji-input"
+              value={emoji}
+              maxLength={8}
+              onChange={(event) => setEmoji(event.target.value)}
+            />
+          </label>
+          <label>
+            Nome
+            <input
+              autoFocus
+              value={name}
+              maxLength={80}
+              placeholder="Ex.: Pets"
+              onChange={(event) => setName(event.target.value)}
+            />
+          </label>
+        </div>
+        {formError && <p className="form-error">{formError}</p>}
+        <button className="submit" onClick={save} disabled={saving}>
+          {saving ? "Salvando..." : "Criar categoria"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function CommonView({
   transactions,
+  categories,
   search,
   setSearch,
   budget,
 }: {
   transactions: Transaction[];
+  categories: ReadonlyArray<readonly [string, string]>;
   search: string;
   setSearch: (s: string) => void;
   budget: number;
@@ -1276,10 +1741,12 @@ function TransactionList({ transactions }: { transactions: Transaction[] }) {
 }
 function TransactionModal({
   kind,
+  categories,
   close,
   submit,
 }: {
   kind: EntryKind;
+  categories: ReadonlyArray<readonly [string, string]>;
   close: () => void;
   submit: (v: Omit<Transaction, "id">) => Promise<void>;
 }) {

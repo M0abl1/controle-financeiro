@@ -56,6 +56,12 @@ service cloud.firestore {
         && validAmount(request.resource.data.investments);
     }
 
+    function validCategory() {
+      return request.resource.data.keys().hasOnly(['name', 'emoji'])
+        && validText(request.resource.data.name, 80)
+        && validText(request.resource.data.emoji, 16);
+    }
+
     match /usuarios/{uid} {
       allow read: if owns(uid);
       allow create: if owns(uid)
@@ -88,6 +94,14 @@ service cloud.firestore {
       allow read: if owns(uid);
       allow create, update: if owns(uid) && validDistribution();
       allow delete: if false;
+    }
+
+    match /dados/{uid}/categorias/{categoryId} {
+      allow read: if owns(uid);
+      allow create, update: if owns(uid)
+        && categoryId.size() <= 128
+        && validCategory();
+      allow delete: if owns(uid);
     }
 
     match /{document=**} {
