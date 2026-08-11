@@ -88,6 +88,94 @@ const colors = [
   "#c084fc",
   "#64748b",
 ];
+const categoryIconLibrary = [
+  "🏷️",
+  "🛒",
+  "🏠",
+  "🧾",
+  "🍽️",
+  "🚗",
+  "⛽",
+  "🚌",
+  "💊",
+  "🏥",
+  "🎓",
+  "📚",
+  "💻",
+  "📱",
+  "🎮",
+  "🎬",
+  "🎵",
+  "🏋️",
+  "🐾",
+  "✈️",
+  "🎁",
+  "👕",
+  "💇",
+  "🔧",
+  "💡",
+  "💳",
+  "💰",
+  "📈",
+  "❤️",
+  "⭐",
+];
+
+function CategoryIcon({ icon }: { icon: string }) {
+  return icon.startsWith("data:image/") ? (
+    <img src={icon} alt="" />
+  ) : (
+    <>{icon}</>
+  );
+}
+
+function resizeCategoryImage(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+      reject(new Error("Formato não permitido"));
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      reject(new Error("Imagem maior que 2 MB"));
+      return;
+    }
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Falha ao ler a imagem"));
+    reader.onload = () => {
+      const image = new Image();
+      image.onerror = () => reject(new Error("Imagem inválida"));
+      image.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = 96;
+        canvas.height = 96;
+        const context = canvas.getContext("2d");
+        if (!context) {
+          reject(new Error("Canvas indisponível"));
+          return;
+        }
+        const scale = Math.min(96 / image.width, 96 / image.height);
+        const width = image.width * scale;
+        const height = image.height * scale;
+        context.clearRect(0, 0, 96, 96);
+        context.drawImage(
+          image,
+          (96 - width) / 2,
+          (96 - height) / 2,
+          width,
+          height,
+        );
+        const result = canvas.toDataURL("image/webp", 0.82);
+        if (result.length > 150000) {
+          reject(new Error("Imagem processada muito grande"));
+          return;
+        }
+        resolve(result);
+      };
+      image.src = String(reader.result);
+    };
+    reader.readAsDataURL(file);
+  });
+}
 const nav = [
   { id: "home", label: "Início", icon: Home },
   { id: "transactions", label: "Transações", icon: ListFilter },
@@ -900,7 +988,9 @@ function CategoriesView({
         <div className="category-card-grid">
           {defaultCategories.map(([name, emoji]) => (
             <div className="category-card" key={name}>
-              <span>{emoji}</span>
+              <span>
+                <CategoryIcon icon={emoji} />
+              </span>
               <div>
                 <b>{name}</b>
                 <small>Padrão</small>
@@ -923,7 +1013,9 @@ function CategoriesView({
           <div className="category-card-grid">
             {userCategories.map((category) => (
               <div className="category-card personal" key={category.id}>
-                <span>{category.emoji}</span>
+                <span>
+                  <CategoryIcon icon={category.emoji} />
+                </span>
                 <div>
                   <b>{category.name}</b>
                   <small>Pessoal</small>
@@ -975,7 +1067,7 @@ function CategoryModal({
   submit: (category: UserCategory) => Promise<void>;
 }) {
   const [name, setName] = useState("");
-  const [emoji, setEmoji] = useState("🏷️");
+  const [icon, setIcon] = useState("🏷️");
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
   const save = async () => {
@@ -999,7 +1091,7 @@ function CategoryModal({
       await submit({
         id: crypto.randomUUID(),
         name: normalizedName,
-        emoji: emoji.trim() || "🏷️",
+        emoji: icon.trim() || "🏷️",
       });
     } catch {
       setFormError("Não foi possível salvar a categoria no Firestore.");
@@ -1022,27 +1114,68 @@ function CategoryModal({
             <X />
           </button>
         </div>
-        <div className="category-form-grid">
-          <label>
-            Ícone
-            <input
-              className="emoji-input"
-              value={emoji}
-              maxLength={8}
-              onChange={(event) => setEmoji(event.target.value)}
-            />
-          </label>
-          <label>
-            Nome
-            <input
-              autoFocus
-              value={name}
-              maxLength={80}
-              placeholder="Ex.: Pets"
-              onChange={(event) => setName(event.target.value)}
-            />
-          </label>
+        <label>
+          Nome
+          <input
+            autoFocus
+            value={name}
+            maxLength={80}
+            placeholder="Ex.: Pets"
+            onChange={(event) => setName(event.target.value)}
+          />
+        </label>
+        <div className="icon-picker-head">
+          <div>
+            <b>Escolha um ícone</b>
+            <small>Biblioteca de ícones financeiros e pessoais</small>
+          </div>
+          <span className="selected-icon-preview">
+            <CategoryIcon icon={icon} />
+          </span>
         </div>
+        <div
+          className="icon-library"
+          role="list"
+          aria-label="Ícones disponíveis"
+        >
+          {categoryIconLibrary.map((libraryIcon) => (
+            <button
+              type="button"
+              className={icon === libraryIcon ? "selected" : ""}
+              onClick={() => setIcon(libraryIcon)}
+              aria-label={`Usar ícone ${libraryIcon}`}
+              key={libraryIcon}
+            >
+              {libraryIcon}
+            </button>
+          ))}
+        </div>
+        <label className="custom-icon-upload">
+          <Upload />
+          <div>
+            <b>Enviar ícone personalizado</b>
+            <small>PNG, JPG ou WebP de até 2 MB</small>
+          </div>
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            onChange={async (event) => {
+              const file = event.target.files?.[0];
+              if (!file) return;
+              setFormError("");
+              try {
+                setIcon(await resizeCategoryImage(file));
+              } catch (cause) {
+                setFormError(
+                  cause instanceof Error
+                    ? cause.message
+                    : "Não foi possível processar a imagem.",
+                );
+              }
+              event.target.value = "";
+            }}
+          />
+        </label>
         {formError && <p className="form-error">{formError}</p>}
         <button className="submit" onClick={save} disabled={saving}>
           {saving ? "Salvando..." : "Criar categoria"}
@@ -1854,7 +1987,9 @@ function TransactionModal({
                   onClick={() => setCategory(name)}
                   key={name}
                 >
-                  <span>{emoji}</span>
+                  <span>
+                    <CategoryIcon icon={emoji} />
+                  </span>
                   {name}
                 </button>
               ))}

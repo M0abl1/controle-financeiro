@@ -59,7 +59,16 @@ service cloud.firestore {
     function validCategory() {
       return request.resource.data.keys().hasOnly(['name', 'emoji'])
         && validText(request.resource.data.name, 80)
-        && validText(request.resource.data.emoji, 16);
+        && request.resource.data.emoji is string
+        && (
+          validText(request.resource.data.emoji, 16)
+          || (
+            request.resource.data.emoji.size() <= 150000
+            && request.resource.data.emoji.matches(
+              '^data:image/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$'
+            )
+          )
+        );
     }
 
     match /usuarios/{uid} {
