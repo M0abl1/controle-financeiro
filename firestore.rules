@@ -24,7 +24,8 @@ service cloud.firestore {
 
     function validTransaction() {
       return request.resource.data.keys().hasOnly([
-          'kind', 'value', 'description', 'category', 'pillar', 'date'
+          'kind', 'value', 'description', 'category', 'pillar', 'date',
+          'reserveId', 'reserveName'
         ])
         && request.resource.data.kind in ['income', 'expense']
         && validAmount(request.resource.data.value)
@@ -34,7 +35,17 @@ service cloud.firestore {
         && request.resource.data.pillar in [
           'common', 'reserve', 'investments'
         ]
-        && validDate(request.resource.data.date);
+        && validDate(request.resource.data.date)
+        && (
+          (!('reserveId' in request.resource.data)
+            && !('reserveName' in request.resource.data))
+          || (
+            request.resource.data.kind == 'expense'
+            && request.resource.data.pillar == 'reserve'
+            && validText(request.resource.data.reserveId, 128)
+            && validText(request.resource.data.reserveName, 100)
+          )
+        );
     }
 
     function validReserve() {

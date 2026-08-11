@@ -8,6 +8,8 @@ export interface Transaction {
   category: string;
   pillar: Pillar;
   date: string;
+  reserveId?: string;
+  reserveName?: string;
 }
 export interface Distribution {
   reserve: number;

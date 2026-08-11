@@ -20,6 +20,8 @@ export async function listTransactions(uid: string): Promise<Transaction[]> {
         category: String(data.category ?? ""),
         pillar: data.pillar,
         date: String(data.date ?? ""),
+        reserveId: data.reserveId ? String(data.reserveId) : undefined,
+        reserveName: data.reserveName ? String(data.reserveName) : undefined,
       } as Transaction;
     })
     .sort((a, b) => b.date.localeCompare(a.date));
@@ -27,12 +29,17 @@ export async function listTransactions(uid: string): Promise<Transaction[]> {
 
 export async function saveTransaction(uid: string, transaction: Transaction) {
   if (!db) throw new Error("Firestore não configurado");
-  await setDoc(doc(db, "dados", uid, "lancamentos", transaction.id), {
+  const data: Record<string, string | number> = {
     kind: transaction.kind,
     value: transaction.value,
     description: transaction.description,
     category: transaction.category,
     pillar: transaction.pillar,
     date: transaction.date,
-  });
+  };
+  if (transaction.reserveId && transaction.reserveName) {
+    data.reserveId = transaction.reserveId;
+    data.reserveName = transaction.reserveName;
+  }
+  await setDoc(doc(db, "dados", uid, "lancamentos", transaction.id), data);
 }

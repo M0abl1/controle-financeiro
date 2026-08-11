@@ -335,6 +335,23 @@ export default function App({
     projectedBalances.investments;
   const addTransaction = async (entry: Omit<Transaction, "id">) => {
     if (!currentUser) throw new Error("Usuário não autenticado");
+    if (entry.kind === "expense" && entry.reserveId) {
+      const reserve = goals.find((goal) => goal.id === entry.reserveId);
+      if (!reserve) throw new Error("A reserva selecionada não existe mais.");
+      const committed = transactions
+        .filter(
+          (transaction) =>
+            transaction.kind === "expense" &&
+            transaction.reserveId === entry.reserveId,
+        )
+        .reduce((sum, transaction) => sum + transaction.value, 0);
+      const available = Math.max(0, reserve.value - committed);
+      if (entry.value > available) {
+        throw new Error(
+          `Saldo insuficiente em ${reserve.name}. Disponível: ${money.format(available)}.`,
+        );
+      }
+    }
     const transaction = { ...entry, id: crypto.randomUUID() };
     await saveTransaction(currentUser.uid, transaction);
     setTransactions((current) => [transaction, ...current]);
@@ -483,6 +500,7 @@ export default function App({
         {view === "reserve" && (
           <ReserveView
             goals={goals}
+            transactions={transactions}
             balance={balances.reserve}
             projectedBalance={projectedBalances.reserve}
             onSave={persistReserve}
@@ -542,6 +560,7 @@ export default function App({
         <TransactionModal
           kind={modal}
           categories={categoryOptions}
+          goals={goals}
           close={() => setModal(null)}
           submit={addTransaction}
         />
@@ -919,7 +938,14 @@ function TransactionsView({
                       {transaction.category}
                     </span>
                   </td>
-                  <td>{pillarLabel(transaction.pillar)}</td>
+                  <td>
+                    {pillarLabel(transaction.pillar)}
+                    {transaction.reserveName && (
+                      <small className="table-secondary">
+                        {transaction.reserveName}
+                      </small>
+                    )}
+                  </td>
                   <td>
                     {new Date(
                       `${transaction.date}T12:00:00`,
@@ -1383,6 +1409,7 @@ function CategoryDetailsModal({
 }
 function ReserveView({
   goals,
+  transactions,
   balance,
   projectedBalance,
   onSave,
@@ -1390,6 +1417,7 @@ function ReserveView({
   syncError,
 }: {
   goals: Goal[];
+  transactions: Transaction[];
   balance: number;
   projectedBalance: number;
   onSave: (goal: Goal) => Promise<void>;
@@ -1397,7 +1425,23 @@ function ReserveView({
   syncError: string;
 }) {
   const [editing, setEditing] = useState<Goal | null | "new">(null);
-  const goalsTotal = goals.reduce((s, g) => s + g.value, 0);
+  const withdrawnByGoal = transactions
+    .filter(
+      (transaction) =>
+        transaction.kind === "expense" &&
+        transaction.pillar === "reserve" &&
+        transaction.reserveId &&
+        transaction.date <= localDate(),
+    )
+    .reduce<Record<string, number>>((total, transaction) => {
+      total[transaction.reserveId!] =
+        (total[transaction.reserveId!] ?? 0) + transaction.value;
+      return total;
+    }, {});
+  const goalsTotal = goals.reduce(
+    (sum, goal) => sum + Math.max(0, goal.value - (withdrawnByGoal[goal.id] ?? 0)),
+    0,
+  );
   const target = goals.reduce((s, g) => s + g.target, 0);
   const projection = Array.from({ length: 13 }, (_, i) => ({
     month: i,
@@ -1448,12 +1492,18 @@ function ReserveView({
               <span>{g.cdi}% do CDI</span>
             </div>
             <strong>
-              {money.format(g.value)} <small>de {money.format(g.target)}</small>
+              {money.format(Math.max(0, g.value - (withdrawnByGoal[g.id] ?? 0)))}{" "}
+              <small>de {money.format(g.target)}</small>
             </strong>
+            {(withdrawnByGoal[g.id] ?? 0) > 0 && (
+              <small className="negative">
+                {money.format(withdrawnByGoal[g.id])} retirados
+              </small>
+            )}
             <div className="progress">
               <i
                 style={{
-                  width: `${Math.min(g.target > 0 ? (g.value / g.target) * 100 : 0, 100)}%`,
+                  width: `${Math.min(g.target > 0 ? (Math.max(0, g.value - (withdrawnByGoal[g.id] ?? 0)) / g.target) * 100 : 0, 100)}%`,
                 }}
               />
             </div>
@@ -1871,6 +1921,7 @@ function TransactionList({ transactions }: { transactions: Transaction[] }) {
             <b>{t.description}</b>
             <small>
               {t.category} ·{" "}
+              {t.reserveName && <>Reserva: {t.reserveName} · </>}
               {new Date(`${t.date}T12:00:00`).toLocaleDateString("pt-BR")}
               {t.kind === "expense" && t.date > localDate() && (
                 <span className="future-badge">Agendada</span>
@@ -1888,11 +1939,13 @@ function TransactionList({ transactions }: { transactions: Transaction[] }) {
 function TransactionModal({
   kind,
   categories,
+  goals,
   close,
   submit,
 }: {
   kind: EntryKind;
   categories: ReadonlyArray<readonly [string, string]>;
+  goals: Goal[];
   close: () => void;
   submit: (v: Omit<Transaction, "id">) => Promise<void>;
 }) {
@@ -1900,6 +1953,7 @@ function TransactionModal({
     [description, setDescription] = useState(""),
     [category, setCategory] = useState("Mercado"),
     [pillar, setPillar] = useState<Pillar>("common"),
+    [reserveId, setReserveId] = useState(""),
     [date, setDate] = useState(localDate());
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
@@ -1910,6 +1964,11 @@ function TransactionModal({
       setFormError("Informe um valor maior que zero.");
       return;
     }
+    if (kind === "expense" && pillar === "reserve" && !reserveId) {
+      setFormError("Escolha o cofrinho ou objetivo de onde o valor será retirado.");
+      return;
+    }
+    const selectedReserve = goals.find((goal) => goal.id === reserveId);
     setSaving(true);
     try {
       await submit({
@@ -1920,11 +1979,16 @@ function TransactionModal({
         category: kind === "income" ? "Renda" : category,
         pillar,
         date: kind === "expense" ? date : localDate(),
+        ...(kind === "expense" && pillar === "reserve" && selectedReserve
+          ? { reserveId: selectedReserve.id, reserveName: selectedReserve.name }
+          : {}),
       });
       close();
-    } catch {
+    } catch (error) {
       setFormError(
-        "Não foi possível salvar no Firestore. Verifique sua conexão.",
+        error instanceof Error
+          ? error.message
+          : "Não foi possível salvar no Firestore. Verifique sua conexão.",
       );
     } finally {
       setSaving(false);
@@ -1993,6 +2057,28 @@ function TransactionModal({
                 <option value="investments">Investimentos</option>
               </select>
             </label>
+            {pillar === "reserve" && (
+              <label>
+                Cofrinho ou objetivo
+                <select
+                  value={reserveId}
+                  onChange={(event) => setReserveId(event.target.value)}
+                  required
+                >
+                  <option value="">Selecione a reserva</option>
+                  {goals.map((goal) => (
+                    <option value={goal.id} key={goal.id}>
+                      {goal.name} — {money.format(goal.value)}
+                    </option>
+                  ))}
+                </select>
+                {goals.length === 0 && (
+                  <small className="field-help">
+                    Crie primeiro um cofrinho na página de Reservas.
+                  </small>
+                )}
+              </label>
+            )}
             <div className="category-grid">
               {categories.map(([name, emoji]) => (
                 <button
