@@ -483,6 +483,8 @@ export default function App({
         {view === "reserve" && (
           <ReserveView
             goals={goals}
+            balance={balances.reserve}
+            projectedBalance={projectedBalances.reserve}
             onSave={persistReserve}
             onDelete={deleteReserve}
             syncError={reserveSyncError}
@@ -1381,30 +1383,40 @@ function CategoryDetailsModal({
 }
 function ReserveView({
   goals,
+  balance,
+  projectedBalance,
   onSave,
   onDelete,
   syncError,
 }: {
   goals: Goal[];
+  balance: number;
+  projectedBalance: number;
   onSave: (goal: Goal) => Promise<void>;
   onDelete: (goalId: string) => Promise<void>;
   syncError: string;
 }) {
   const [editing, setEditing] = useState<Goal | null | "new">(null);
-  const total = goals.reduce((s, g) => s + g.value, 0);
+  const goalsTotal = goals.reduce((s, g) => s + g.value, 0);
   const target = goals.reduce((s, g) => s + g.target, 0);
   const projection = Array.from({ length: 13 }, (_, i) => ({
     month: i,
-    value: new Decimal(total).times(new Decimal(1.009).pow(i)).toNumber(),
+    value: new Decimal(Math.max(0, balance))
+      .times(new Decimal(1.009).pow(i))
+      .toNumber(),
   }));
   return (
     <section className="page">
       <div className="metric-row">
-        <Metric label="TOTAL EM RESERVA" value={money.format(total)} />
-        <Metric label="META TOTAL" value={money.format(target)} />
+        <Metric label="SALDO ATUAL" value={money.format(balance)} />
+        <Metric
+          label="APÓS GASTOS AGENDADOS"
+          value={money.format(projectedBalance)}
+        />
+        <Metric label="TOTAL NOS OBJETIVOS" value={money.format(goalsTotal)} />
         <Metric
           label="PROGRESSO"
-          value={`${target > 0 ? Math.round((total / target) * 100) : 0}%`}
+          value={`${target > 0 ? Math.round((goalsTotal / target) * 100) : 0}%`}
         />
       </div>
       <div className="section-actions">
@@ -1467,6 +1479,7 @@ function ReserveView({
       <article className="panel chart-wide">
         <span>SIMULAÇÃO</span>
         <h2>Projeção da reserva — 12 meses</h2>
+        <p>Projeção calculada sobre o saldo atual da Reserva.</p>
         <ResponsiveContainer width="100%" height={280}>
           <AreaChart data={projection}>
             <defs>
