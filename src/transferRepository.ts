@@ -67,7 +67,13 @@ export async function saveMoneyTransfer(
     }
     if (next.reserve < 0) throw new Error("Saldo insuficiente na Reserva.");
     transaction.set(distributionRef(uid), next);
-    transaction.set(transferRef(uid, movement.id), movement);
+    transaction.set(transferRef(uid, movement.id), {
+      from: movement.from,
+      to: movement.to,
+      value: movement.value,
+      date: movement.date,
+      reversed: movement.reversed,
+    });
   });
 }
 
