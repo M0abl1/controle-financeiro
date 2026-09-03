@@ -1596,6 +1596,7 @@ function ReserveView({
             <div>
               <Target />
               <b>{g.name}</b>
+              {g.institution && <span>{g.institution}</span>}
               <span>{g.cdi}% do CDI</span>
             </div>
             <strong>
@@ -1725,6 +1726,7 @@ function ReserveModal({
   submit: (goal: Goal) => Promise<void>;
 }) {
   const [name, setName] = useState(goal?.name ?? "");
+  const [institution, setInstitution] = useState(goal?.institution ?? "");
   const [target, setTarget] = useState(
     goal
       ? goal.target.toLocaleString("pt-BR", { minimumFractionDigits: 2 })
@@ -1752,6 +1754,7 @@ function ReserveModal({
       await submit({
         id: goal?.id ?? crypto.randomUUID(),
         name: name.trim(),
+        institution: institution.trim(),
         value: goal?.value ?? 0,
         target: parsedTarget,
         cdi: parsedCdi,
@@ -1787,6 +1790,18 @@ function ReserveModal({
             onChange={(event) => setName(event.target.value)}
             placeholder="Ex.: Reserva de emergência"
           />
+        </label>
+        <label>
+          Banco ou instituição
+          <input
+            value={institution}
+            onChange={(event) => setInstitution(event.target.value)}
+            placeholder="Ex.: Nubank, Itaú ou corretora"
+            maxLength={100}
+          />
+          <small className="field-hint">
+            Campo opcional, usado apenas para identificar onde o dinheiro está.
+          </small>
         </label>
         <div className="form-grid">
           <label>

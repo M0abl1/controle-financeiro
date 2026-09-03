@@ -32,6 +32,7 @@ export interface Asset {
 export interface Goal {
   id: string;
   name: string;
+  institution?: string;
   value: number;
   target: number;
   cdi: number;

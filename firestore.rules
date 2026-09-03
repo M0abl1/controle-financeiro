@@ -51,9 +51,16 @@ service cloud.firestore {
 
     function validReserve() {
       return request.resource.data.keys().hasOnly([
-          'name', 'value', 'target', 'cdi'
+          'name', 'institution', 'value', 'target', 'cdi'
         ])
         && validText(request.resource.data.name, 100)
+        && (
+          !('institution' in request.resource.data)
+          || (
+            request.resource.data.institution is string
+            && request.resource.data.institution.size() <= 100
+          )
+        )
         && validAmount(request.resource.data.value)
         && validAmount(request.resource.data.target)
         && request.resource.data.target > 0
