@@ -10,6 +10,7 @@ export interface Transaction {
   date: string;
   reserveId?: string;
   reserveName?: string;
+  reversed?: boolean;
 }
 export interface Distribution {
   reserve: number;
@@ -34,4 +35,13 @@ export interface Goal {
   value: number;
   target: number;
   cdi: number;
+}
+export type MoneyLocation = "common" | "reserve" | `goal:${string}`;
+export interface MoneyTransfer {
+  id: string;
+  from: MoneyLocation;
+  to: MoneyLocation;
+  value: number;
+  date: string;
+  reversed: boolean;
 }

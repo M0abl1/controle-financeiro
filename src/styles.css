@@ -2069,6 +2069,40 @@ header h1 {
   background: #272043;
   color: #b8a8ff;
 }
+.transaction-status.reversed {
+  color: #a8a8b8;
+  background: #ffffff12;
+}
+.table-action {
+  border: 1px solid #ffffff1c;
+  border-radius: 8px;
+  padding: 0.45rem 0.7rem;
+  color: var(--text);
+  background: transparent;
+  cursor: pointer;
+}
+.table-action:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.transfer-history {
+  margin-top: 1rem;
+}
+.transfer-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.9rem 0;
+  border-top: 1px solid #ffffff10;
+}
+.transfer-row div {
+  display: grid;
+  gap: 0.25rem;
+}
+.transfer-row small {
+  color: var(--muted);
+}
 .category-heading {
   margin-bottom: 16px;
 }

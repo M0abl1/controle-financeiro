@@ -1,4 +1,4 @@
-import { collection, doc, getDocs, setDoc } from "firebase/firestore";
+import { collection, doc, getDocs, setDoc, updateDoc } from "firebase/firestore";
 import { db } from "./firebase";
 import type { Transaction } from "./types";
 
@@ -22,6 +22,7 @@ export async function listTransactions(uid: string): Promise<Transaction[]> {
         date: String(data.date ?? ""),
         reserveId: data.reserveId ? String(data.reserveId) : undefined,
         reserveName: data.reserveName ? String(data.reserveName) : undefined,
+        reversed: data.reversed === true,
       } as Transaction;
     })
     .sort((a, b) => b.date.localeCompare(a.date));
@@ -29,17 +30,25 @@ export async function listTransactions(uid: string): Promise<Transaction[]> {
 
 export async function saveTransaction(uid: string, transaction: Transaction) {
   if (!db) throw new Error("Firestore não configurado");
-  const data: Record<string, string | number> = {
+  const data: Record<string, string | number | boolean> = {
     kind: transaction.kind,
     value: transaction.value,
     description: transaction.description,
     category: transaction.category,
     pillar: transaction.pillar,
     date: transaction.date,
+    reversed: transaction.reversed === true,
   };
   if (transaction.reserveId && transaction.reserveName) {
     data.reserveId = transaction.reserveId;
     data.reserveName = transaction.reserveName;
   }
   await setDoc(doc(db, "dados", uid, "lancamentos", transaction.id), data);
+}
+
+export async function reverseTransaction(uid: string, transactionId: string) {
+  if (!db) throw new Error("Firestore não configurado");
+  await updateDoc(doc(db, "dados", uid, "lancamentos", transactionId), {
+    reversed: true,
+  });
 }

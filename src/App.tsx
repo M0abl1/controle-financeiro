@@ -44,7 +44,16 @@ import {
 } from "./data";
 import { setAccountPassword } from "./firebase";
 import { listReserves, removeReserve, saveReserve } from "./reserveRepository";
-import { listTransactions, saveTransaction } from "./transactionRepository";
+import {
+  listTransactions,
+  reverseTransaction,
+  saveTransaction,
+} from "./transactionRepository";
+import {
+  listTransfers,
+  reverseMoneyTransfer,
+  saveMoneyTransfer,
+} from "./transferRepository";
 import { getDistribution, saveDistribution } from "./distributionRepository";
 import {
   listCategories,
@@ -55,6 +64,8 @@ import type {
   Distribution,
   EntryKind,
   Goal,
+  MoneyLocation,
+  MoneyTransfer,
   Pillar,
   Transaction,
   UserCategory,
@@ -202,6 +213,7 @@ export default function App({
     reserve: 0,
     investments: 0,
   });
+  const [transfers, setTransfers] = useState<MoneyTransfer[]>([]);
   const [goals, setGoals] = useState<Goal[]>(seedGoals);
   const [userCategories, setUserCategories] = useState<UserCategory[]>([]);
   const [reserveSyncError, setReserveSyncError] = useState("");
@@ -216,17 +228,20 @@ export default function App({
           cloudTransactions,
           cloudDistribution,
           cloudCategories,
+          cloudTransfers,
         ] = await Promise.all([
           listReserves(currentUser.uid),
           listTransactions(currentUser.uid),
           getDistribution(currentUser.uid),
           listCategories(currentUser.uid),
+          listTransfers(currentUser.uid),
         ]);
         if (!active) return;
         setGoals(cloudReserves);
         setTransactions(cloudTransactions);
         setDistribution(cloudDistribution);
         setUserCategories(cloudCategories);
+        setTransfers(cloudTransfers);
         setReserveSyncError("");
       } catch {
         if (active)
@@ -268,7 +283,7 @@ export default function App({
   const income = useMemo(
     () =>
       transactions
-        .filter((t) => t.kind === "income")
+        .filter((t) => t.kind === "income" && !t.reversed)
         .reduce((s, t) => s + t.value, 0),
     [transactions],
   );
@@ -277,7 +292,9 @@ export default function App({
       transactions
         .filter(
           (transaction) =>
-            transaction.kind === "expense" && transaction.date <= localDate(),
+            !transaction.reversed &&
+            transaction.kind === "expense" &&
+            transaction.date <= localDate(),
         )
         .reduce(
           (total, transaction) => {
@@ -293,7 +310,9 @@ export default function App({
       transactions
         .filter(
           (transaction) =>
-            transaction.kind === "expense" && transaction.date > localDate(),
+            !transaction.reversed &&
+            transaction.kind === "expense" &&
+            transaction.date > localDate(),
         )
         .reduce(
           (total, transaction) => {
@@ -314,10 +333,7 @@ export default function App({
   };
   const balances = {
     common: allocated.common - expensesByPillar.common,
-    reserve:
-      allocated.reserve -
-      expensesByPillar.reserve +
-      goals.reduce((s, g) => s + g.value, 0),
+    reserve: allocated.reserve - expensesByPillar.reserve,
     investments:
       allocated.investments -
       expensesByPillar.investments +
@@ -342,6 +358,7 @@ export default function App({
         .filter(
           (transaction) =>
             transaction.kind === "expense" &&
+            !transaction.reversed &&
             transaction.reserveId === entry.reserveId,
         )
         .reduce((sum, transaction) => sum + transaction.value, 0);
@@ -356,6 +373,15 @@ export default function App({
     await saveTransaction(currentUser.uid, transaction);
     setTransactions((current) => [transaction, ...current]);
   };
+  const undoTransaction = async (transaction: Transaction) => {
+    if (!currentUser || transaction.reversed) return;
+    await reverseTransaction(currentUser.uid, transaction.id);
+    setTransactions((current) =>
+      current.map((item) =>
+        item.id === transaction.id ? { ...item, reversed: true } : item,
+      ),
+    );
+  };
   const importTransactions = async (items: Transaction[]) => {
     if (!currentUser) throw new Error("Usuário não autenticado");
     await Promise.all(
@@ -363,11 +389,55 @@ export default function App({
     );
     setTransactions(items);
   };
-  const persistDistribution = async (next: Distribution) => {
+  const persistTransfer = async (
+    from: MoneyLocation,
+    to: MoneyLocation,
+    value: number,
+  ) => {
     if (!currentUser) throw new Error("Usuário não autenticado");
-    await saveDistribution(currentUser.uid, next);
-    setDistribution(next);
+    const movement: MoneyTransfer = {
+      id: crypto.randomUUID(),
+      from,
+      to,
+      value,
+      date: localDate(),
+      reversed: false,
+    };
+    await saveMoneyTransfer(currentUser.uid, movement);
+    if (from === "common" && to === "reserve")
+      setDistribution((current) => ({ ...current, reserve: current.reserve + value }));
+    if (from === "reserve" && to === "common")
+      setDistribution((current) => ({ ...current, reserve: current.reserve - value }));
+    if (from.startsWith("goal:") || to.startsWith("goal:")) {
+      setGoals((current) =>
+        current.map((goal) => ({
+          ...goal,
+          value:
+            goal.value +
+            (to === `goal:${goal.id}` ? value : 0) -
+            (from === `goal:${goal.id}` ? value : 0),
+        })),
+      );
+    }
+    setTransfers((current) => [movement, ...current]);
     setReserveSyncError("");
+  };
+  const undoTransfer = async (movement: MoneyTransfer) => {
+    if (!currentUser || movement.reversed) return;
+    try {
+      await reverseMoneyTransfer(currentUser.uid, movement);
+      await Promise.all([
+        getDistribution(currentUser.uid).then(setDistribution),
+        listReserves(currentUser.uid).then(setGoals),
+        listTransfers(currentUser.uid).then(setTransfers),
+      ]);
+    } catch (error) {
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível estornar a movimentação.",
+      );
+    }
   };
   const persistCategory = async (category: UserCategory) => {
     if (!currentUser) throw new Error("Usuário não autenticado");
@@ -483,6 +553,7 @@ export default function App({
             transactions={transactions}
             categories={categoryOptions}
             onNewTransaction={() => setModal("expense")}
+            onUndo={undoTransaction}
           />
         )}
         {view === "common" && (
@@ -503,6 +574,9 @@ export default function App({
             onSave={persistReserve}
             onDelete={deleteReserve}
             syncError={reserveSyncError}
+            transfers={transfers}
+            onUndoTransfer={undoTransfer}
+            onMove={() => setDistributionModal(true)}
           />
         )}
         {view === "investments" && (
@@ -564,11 +638,11 @@ export default function App({
       )}
       {distributionModal && (
         <DistributionModal
-          current={distribution}
           commonBalance={balances.common}
           reserveBalance={balances.reserve}
+          goals={goals}
           close={() => setDistributionModal(false)}
-          submit={persistDistribution}
+          submit={persistTransfer}
         />
       )}
     </div>
@@ -777,10 +851,12 @@ function TransactionsView({
   transactions,
   categories,
   onNewTransaction,
+  onUndo,
 }: {
   transactions: Transaction[];
   categories: ReadonlyArray<readonly [string, string]>;
   onNewTransaction: () => void;
+  onUndo: (transaction: Transaction) => Promise<void>;
 }) {
   const today = localDate();
   const [startDate, setStartDate] = useState(`${today.slice(0, 8)}01`);
@@ -815,10 +891,10 @@ function TransactionsView({
         : b.date.localeCompare(a.date);
     });
   const income = filtered
-    .filter((transaction) => transaction.kind === "income")
+    .filter((transaction) => transaction.kind === "income" && !transaction.reversed)
     .reduce((total, transaction) => total + transaction.value, 0);
   const expense = filtered
-    .filter((transaction) => transaction.kind === "expense")
+    .filter((transaction) => transaction.kind === "expense" && !transaction.reversed)
     .reduce((total, transaction) => total + transaction.value, 0);
 
   return (
@@ -913,12 +989,13 @@ function TransactionsView({
                 <th>Data</th>
                 <th>Status</th>
                 <th>Valor</th>
+                <th>Ação</th>
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="table-empty">
+                  <td colSpan={7} className="table-empty">
                     Nenhuma transação encontrada com estes filtros.
                   </td>
                 </tr>
@@ -951,9 +1028,13 @@ function TransactionsView({
                   </td>
                   <td>
                     <span
-                      className={`transaction-status ${transaction.date > today ? "scheduled" : "confirmed"}`}
+                      className={`transaction-status ${transaction.reversed ? "reversed" : transaction.date > today ? "scheduled" : "confirmed"}`}
                     >
-                      {transaction.date > today ? "Agendada" : "Confirmada"}
+                      {transaction.reversed
+                        ? "Estornada"
+                        : transaction.date > today
+                          ? "Agendada"
+                          : "Confirmada"}
                     </span>
                   </td>
                   <td
@@ -963,6 +1044,15 @@ function TransactionsView({
                   >
                     {transaction.kind === "income" ? "+" : "−"}
                     {money.format(transaction.value)}
+                  </td>
+                  <td>
+                    <button
+                      className="table-action"
+                      disabled={transaction.reversed}
+                      onClick={() => void onUndo(transaction)}
+                    >
+                      {transaction.reversed ? "Estornada" : "Estornar"}
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -1227,7 +1317,9 @@ function CommonView({
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const expenses = transactions.filter(
       (transaction) =>
-        transaction.kind === "expense" && transaction.pillar === "common",
+        !transaction.reversed &&
+        transaction.kind === "expense" &&
+        transaction.pillar === "common",
     ),
     currentExpenses = expenses.filter(
       (transaction) => transaction.date <= localDate(),
@@ -1413,6 +1505,9 @@ function ReserveView({
   onSave,
   onDelete,
   syncError,
+  transfers,
+  onUndoTransfer,
+  onMove,
 }: {
   goals: Goal[];
   transactions: Transaction[];
@@ -1421,11 +1516,15 @@ function ReserveView({
   onSave: (goal: Goal) => Promise<void>;
   onDelete: (goalId: string) => Promise<void>;
   syncError: string;
+  transfers: MoneyTransfer[];
+  onUndoTransfer: (movement: MoneyTransfer) => Promise<void>;
+  onMove: () => void;
 }) {
   const [editing, setEditing] = useState<Goal | null | "new">(null);
   const withdrawnByGoal = transactions
     .filter(
-      (transaction) =>
+        (transaction) =>
+        !transaction.reversed &&
         transaction.kind === "expense" &&
         transaction.pillar === "reserve" &&
         transaction.reserveId &&
@@ -1455,7 +1554,10 @@ function ReserveView({
           label="APÓS GASTOS AGENDADOS"
           value={money.format(projectedBalance)}
         />
-        <Metric label="TOTAL NOS OBJETIVOS" value={money.format(goalsTotal)} />
+        <Metric
+          label="SALDO LIVRE NA RESERVA"
+          value={money.format(Math.max(0, balance - goalsTotal))}
+        />
         <Metric
           label="PROGRESSO"
           value={`${target > 0 ? Math.round((goalsTotal / target) * 100) : 0}%`}
@@ -1466,9 +1568,12 @@ function ReserveView({
           <span>COFRINHOS E OBJETIVOS</span>
           <h2>Minhas reservas</h2>
         </div>
-        <button className="primary" onClick={() => setEditing("new")}>
-          <Plus /> Nova reserva
-        </button>
+        <div className="goal-actions">
+          <button onClick={onMove}>Mover dinheiro</button>
+          <button className="primary" onClick={() => setEditing("new")}>
+            <Plus /> Novo cofrinho
+          </button>
+        </div>
       </div>
       {syncError && <p className="sync-error">{syncError}</p>}
       <div className="goal-grid">
@@ -1524,6 +1629,43 @@ function ReserveView({
           </article>
         ))}
       </div>
+      <article className="panel transfer-history">
+        <div className="panel-head">
+          <div>
+            <span>MOVIMENTAÇÕES</span>
+            <h2>Histórico da Reserva</h2>
+          </div>
+        </div>
+        {transfers.length === 0 && (
+          <p className="empty">Nenhuma movimentação realizada.</p>
+        )}
+        {transfers
+          .slice()
+          .sort((a, b) => b.date.localeCompare(a.date))
+          .map((movement) => (
+            <div className="transfer-row" key={movement.id}>
+              <div>
+                <b>
+                  {locationLabel(movement.from, goals)} →{" "}
+                  {locationLabel(movement.to, goals)}
+                </b>
+                <small>
+                  {new Date(`${movement.date}T12:00:00`).toLocaleDateString(
+                    "pt-BR",
+                  )}
+                </small>
+              </div>
+              <strong>{money.format(movement.value)}</strong>
+              <button
+                className="table-action"
+                disabled={movement.reversed}
+                onClick={() => void onUndoTransfer(movement)}
+              >
+                {movement.reversed ? "Estornada" : "Estornar"}
+              </button>
+            </div>
+          ))}
+      </article>
       <article className="panel chart-wide">
         <span>SIMULAÇÃO</span>
         <h2>Projeção da reserva — 12 meses</h2>
@@ -1563,6 +1705,12 @@ function ReserveView({
   );
 }
 
+function locationLabel(location: MoneyLocation, goals: Goal[]) {
+  if (location === "common") return "Uso comum";
+  if (location === "reserve") return "Reserva livre";
+  return goals.find((goal) => `goal:${goal.id}` === location)?.name ?? "Cofrinho";
+}
+
 function ReserveModal({
   goal,
   close,
@@ -1573,11 +1721,6 @@ function ReserveModal({
   submit: (goal: Goal) => Promise<void>;
 }) {
   const [name, setName] = useState(goal?.name ?? "");
-  const [value, setValue] = useState(
-    goal
-      ? goal.value.toLocaleString("pt-BR", { minimumFractionDigits: 2 })
-      : "",
-  );
   const [target, setTarget] = useState(
     goal
       ? goal.target.toLocaleString("pt-BR", { minimumFractionDigits: 2 })
@@ -1590,14 +1733,13 @@ function ReserveModal({
     Number(input.replace(/\./g, "").replace(",", ".")) || 0;
   const saveReserve = async () => {
     setFormError("");
-    const parsedValue = parseMoney(value);
     const parsedTarget = parseMoney(target);
     const parsedCdi = Number(cdi.replace(",", "."));
     if (!name.trim()) {
       setFormError("Informe o nome da reserva.");
       return;
     }
-    if (parsedValue < 0 || parsedTarget <= 0 || parsedCdi <= 0) {
+    if (parsedTarget <= 0 || parsedCdi <= 0) {
       setFormError("Informe meta e CDI maiores que zero.");
       return;
     }
@@ -1606,7 +1748,7 @@ function ReserveModal({
       await submit({
         id: goal?.id ?? crypto.randomUUID(),
         name: name.trim(),
-        value: parsedValue,
+        value: goal?.value ?? 0,
         target: parsedTarget,
         cdi: parsedCdi,
       });
@@ -1644,15 +1786,6 @@ function ReserveModal({
         </label>
         <div className="form-grid">
           <label>
-            Saldo atual (R$)
-            <input
-              inputMode="decimal"
-              value={value}
-              onChange={(event) => setValue(event.target.value)}
-              placeholder="0,00"
-            />
-          </label>
-          <label>
             Meta (R$)
             <input
               inputMode="decimal"
@@ -1662,6 +1795,9 @@ function ReserveModal({
             />
           </label>
         </div>
+        <small className="field-hint">
+          O saldo do cofrinho é alterado somente por “Mover dinheiro”.
+        </small>
         <label>
           Rentabilidade (% do CDI)
           <input
@@ -1909,7 +2045,7 @@ function TransactionList({ transactions }: { transactions: Transaction[] }) {
       )}
       {transactions.map((t) => (
         <div
-          className={`transaction ${t.kind === "expense" && t.date > localDate() ? "future" : ""}`}
+          className={`transaction ${t.reversed ? "reversed" : t.kind === "expense" && t.date > localDate() ? "future" : ""}`}
           key={t.id}
         >
           <span className={t.kind}>
@@ -1924,6 +2060,7 @@ function TransactionList({ transactions }: { transactions: Transaction[] }) {
               {t.kind === "expense" && t.date > localDate() && (
                 <span className="future-badge">Agendada</span>
               )}
+              {t.reversed && <span className="future-badge">Estornada</span>}
             </small>
           </div>
           <strong className={t.kind === "income" ? "positive" : ""}>
@@ -1951,7 +2088,7 @@ function TransactionModal({
     [description, setDescription] = useState(""),
     [category, setCategory] = useState("Mercado"),
     [pillar, setPillar] = useState<Pillar>("common"),
-    [reserveId, setReserveId] = useState(""),
+    [reserveId, setReserveId] = useState("free"),
     [date, setDate] = useState(localDate());
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
@@ -1960,10 +2097,6 @@ function TransactionModal({
     setFormError("");
     if (numeric <= 0) {
       setFormError("Informe um valor maior que zero.");
-      return;
-    }
-    if (kind === "expense" && pillar === "reserve" && !reserveId) {
-      setFormError("Escolha o cofrinho ou objetivo de onde o valor será retirado.");
       return;
     }
     const selectedReserve = goals.find((goal) => goal.id === reserveId);
@@ -2063,18 +2196,16 @@ function TransactionModal({
                   onChange={(event) => setReserveId(event.target.value)}
                   required
                 >
-                  <option value="">Selecione a reserva</option>
+                  <option value="free">Saldo livre da Reserva</option>
                   {goals.map((goal) => (
                     <option value={goal.id} key={goal.id}>
                       {goal.name} — {money.format(goal.value)}
                     </option>
                   ))}
                 </select>
-                {goals.length === 0 && (
-                  <small className="field-help">
-                    Crie primeiro um cofrinho na página de Reservas.
-                  </small>
-                )}
+                <small className="field-help">
+                  Escolha o saldo livre ou um cofrinho específico.
+                </small>
               </label>
             )}
             <div className="category-grid">
@@ -2117,32 +2248,53 @@ function TransactionModal({
 }
 
 function DistributionModal({
-  current,
   commonBalance,
   reserveBalance,
+  goals,
   close,
   submit,
 }: {
-  current: Distribution;
   commonBalance: number;
   reserveBalance: number;
+  goals: Goal[];
   close: () => void;
-  submit: (value: Distribution) => Promise<void>;
+  submit: (from: MoneyLocation, to: MoneyLocation, value: number) => Promise<void>;
 }) {
-  const [direction, setDirection] = useState<"deposit" | "withdraw">("deposit");
+  const [from, setFrom] = useState<MoneyLocation>("common");
+  const [to, setTo] = useState<MoneyLocation>("reserve");
   const [amount, setAmount] = useState("");
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
   const parseMoney = (value: string) =>
     Number(value.replace(/\./g, "").replace(",", ".")) || 0;
   const transferValue = parseMoney(amount);
-  const available = direction === "deposit" ? commonBalance : current.reserve;
+  const allocatedToGoals = goals.reduce((sum, goal) => sum + goal.value, 0);
+  const available =
+    from === "common"
+      ? commonBalance
+      : from === "reserve"
+        ? Math.max(0, reserveBalance - allocatedToGoals)
+        : (goals.find((goal) => `goal:${goal.id}` === from)?.value ?? 0);
+  const affectsCommonReserve =
+    (from === "common" && to === "reserve") ||
+    (from === "reserve" && to === "common");
   const nextCommon = new Decimal(commonBalance)
-    .plus(direction === "withdraw" ? transferValue : -transferValue)
+    .plus(from === "reserve" && to === "common" ? transferValue : from === "common" ? -transferValue : 0)
     .toNumber();
   const nextReserve = new Decimal(reserveBalance)
-    .plus(direction === "deposit" ? transferValue : -transferValue)
+    .plus(from === "common" && to === "reserve" ? transferValue : from === "reserve" && to === "common" ? -transferValue : 0)
     .toNumber();
+  const destinations: MoneyLocation[] =
+    from === "common"
+      ? ["reserve"]
+      : from === "reserve"
+        ? ["common", ...goals.map((goal) => `goal:${goal.id}` as MoneyLocation)]
+        : [
+            "reserve",
+            ...goals
+              .map((goal) => `goal:${goal.id}` as MoneyLocation)
+              .filter((location) => location !== from),
+          ];
 
   const confirm = async () => {
     setFormError("");
@@ -2158,10 +2310,7 @@ function DistributionModal({
     }
     setSaving(true);
     try {
-      const reserve = new Decimal(current.reserve)
-        .plus(direction === "deposit" ? transferValue : -transferValue)
-        .toNumber();
-      await submit({ reserve, investments: current.investments });
+      await submit(from, to, transferValue);
       close();
     } catch (error) {
       setFormError(
@@ -2193,15 +2342,28 @@ function DistributionModal({
           Transfira sem alterar o saldo total da sua conta.
         </p>
         <label>
-          Operação
+          Retirar de
           <select
-            value={direction}
-            onChange={(event) =>
-              setDirection(event.target.value as "deposit" | "withdraw")
-            }
+            value={from}
+            onChange={(event) => {
+              const origin = event.target.value as MoneyLocation;
+              setFrom(origin);
+              setTo(origin === "common" ? "reserve" : origin === "reserve" ? "common" : "reserve");
+            }}
           >
-            <option value="deposit">Uso comum → Reserva</option>
-            <option value="withdraw">Reserva → Uso comum</option>
+            <option value="common">Uso comum</option>
+            <option value="reserve">Reserva livre</option>
+            {goals.map((goal) => (
+              <option value={`goal:${goal.id}`} key={goal.id}>{goal.name}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Adicionar em
+          <select value={to} onChange={(event) => setTo(event.target.value as MoneyLocation)}>
+            {destinations.map((location) => (
+              <option value={location} key={location}>{locationLabel(location, goals)}</option>
+            ))}
           </select>
         </label>
         <label>
@@ -2218,14 +2380,18 @@ function DistributionModal({
             <span>Disponível na origem</span>
             <b>{money.format(Math.max(0, available))}</b>
           </div>
-          <div className="remaining">
-            <span>Uso comum após transferência</span>
-            <b>{money.format(nextCommon)}</b>
-          </div>
-          <div className="remaining">
-            <span>Reserva após transferência</span>
-            <b>{money.format(nextReserve)}</b>
-          </div>
+          {affectsCommonReserve && (
+            <>
+              <div className="remaining">
+                <span>Uso comum após transferência</span>
+                <b>{money.format(nextCommon)}</b>
+              </div>
+              <div className="remaining">
+                <span>Reserva total após transferência</span>
+                <b>{money.format(nextReserve)}</b>
+              </div>
+            </>
+          )}
         </div>
         {formError && <p className="form-error">{formError}</p>}
         <button className="submit" onClick={confirm} disabled={saving}>

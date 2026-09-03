@@ -25,7 +25,7 @@ service cloud.firestore {
     function validTransaction() {
       return request.resource.data.keys().hasOnly([
           'kind', 'value', 'description', 'category', 'pillar', 'date',
-          'reserveId', 'reserveName'
+          'reserveId', 'reserveName', 'reversed'
         ])
         && request.resource.data.kind in ['income', 'expense']
         && validAmount(request.resource.data.value)
@@ -36,6 +36,7 @@ service cloud.firestore {
           'common', 'reserve', 'investments'
         ]
         && validDate(request.resource.data.date)
+        && request.resource.data.reversed is bool
         && (
           (!('reserveId' in request.resource.data)
             && !('reserveName' in request.resource.data))
@@ -82,6 +83,19 @@ service cloud.firestore {
         );
     }
 
+    function validMovement() {
+      return request.resource.data.keys().hasOnly([
+          'from', 'to', 'value', 'date', 'reversed'
+        ])
+        && validText(request.resource.data.from, 133)
+        && validText(request.resource.data.to, 133)
+        && request.resource.data.from != request.resource.data.to
+        && validAmount(request.resource.data.value)
+        && request.resource.data.value > 0
+        && validDate(request.resource.data.date)
+        && request.resource.data.reversed is bool;
+    }
+
     match /usuarios/{uid} {
       allow read: if owns(uid);
       allow create: if owns(uid)
@@ -108,6 +122,14 @@ service cloud.firestore {
         && reserveId.size() <= 128
         && validReserve();
       allow delete: if owns(uid);
+    }
+
+    match /dados/{uid}/movimentacoes/{movementId} {
+      allow read: if owns(uid);
+      allow create, update: if owns(uid)
+        && movementId.size() <= 128
+        && validMovement();
+      allow delete: if false;
     }
 
     match /dados/{uid}/configuracoes/distribuicao {
