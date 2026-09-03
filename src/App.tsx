@@ -404,9 +404,9 @@ export default function App({
       reversed: false,
     };
     await saveMoneyTransfer(currentUser.uid, movement);
-    if (from === "common" && to === "reserve")
+    if (from === "common" && to !== "common")
       setDistribution((current) => ({ ...current, reserve: current.reserve + value }));
-    if (from === "reserve" && to === "common")
+    if (to === "common" && from !== "common")
       setDistribution((current) => ({ ...current, reserve: current.reserve - value }));
     if (from.startsWith("goal:") || to.startsWith("goal:")) {
       setGoals((current) =>
@@ -2275,22 +2275,21 @@ function DistributionModal({
       : from === "reserve"
         ? Math.max(0, reserveBalance - allocatedToGoals)
         : (goals.find((goal) => `goal:${goal.id}` === from)?.value ?? 0);
-  const affectsCommonReserve =
-    (from === "common" && to === "reserve") ||
-    (from === "reserve" && to === "common");
+  const affectsCommonReserve = from === "common" || to === "common";
   const nextCommon = new Decimal(commonBalance)
-    .plus(from === "reserve" && to === "common" ? transferValue : from === "common" ? -transferValue : 0)
+    .plus(to === "common" ? transferValue : from === "common" ? -transferValue : 0)
     .toNumber();
   const nextReserve = new Decimal(reserveBalance)
-    .plus(from === "common" && to === "reserve" ? transferValue : from === "reserve" && to === "common" ? -transferValue : 0)
+    .plus(from === "common" ? transferValue : to === "common" ? -transferValue : 0)
     .toNumber();
   const destinations: MoneyLocation[] =
     from === "common"
-      ? ["reserve"]
+      ? ["reserve", ...goals.map((goal) => `goal:${goal.id}` as MoneyLocation)]
       : from === "reserve"
         ? ["common", ...goals.map((goal) => `goal:${goal.id}` as MoneyLocation)]
         : [
             "reserve",
+            "common",
             ...goals
               .map((goal) => `goal:${goal.id}` as MoneyLocation)
               .filter((location) => location !== from),

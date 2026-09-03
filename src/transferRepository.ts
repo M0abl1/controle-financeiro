@@ -39,9 +39,9 @@ export async function saveMoneyTransfer(
       reserve: Number(distributionSnapshot.data()?.reserve ?? 0),
       investments: Number(distributionSnapshot.data()?.investments ?? 0),
     };
-    if (movement.from === "common" && movement.to === "reserve")
+    if (movement.from === "common" && movement.to !== "common")
       next.reserve += movement.value;
-    if (movement.from === "reserve" && movement.to === "common")
+    if (movement.to === "common" && movement.from !== "common")
       next.reserve -= movement.value;
 
     const goalChanges = new Map<string, number>();
