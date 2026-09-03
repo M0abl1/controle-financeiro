@@ -87,9 +87,9 @@ service cloud.firestore {
       return request.resource.data.keys().hasOnly([
           'from', 'to', 'value', 'date', 'reversed'
         ])
-        && validText(request.resource.data.from, 133)
-        && validText(request.resource.data.to, 133)
-        && request.resource.data.from != request.resource.data.to
+        && validText(request.resource.data['from'], 133)
+        && validText(request.resource.data['to'], 133)
+        && request.resource.data['from'] != request.resource.data['to']
         && validAmount(request.resource.data.value)
         && request.resource.data.value > 0
         && validDate(request.resource.data.date)
@@ -126,9 +126,14 @@ service cloud.firestore {
 
     match /dados/{uid}/movimentacoes/{movementId} {
       allow read: if owns(uid);
-      allow create, update: if owns(uid)
+      allow create: if owns(uid)
         && movementId.size() <= 128
         && validMovement();
+      allow update: if owns(uid)
+        && validMovement()
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['reversed'])
+        && request.resource.data.reversed == true;
       allow delete: if false;
     }
 
