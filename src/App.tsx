@@ -365,9 +365,6 @@ export default function App({
   };
   const persistDistribution = async (next: Distribution) => {
     if (!currentUser) throw new Error("Usuário não autenticado");
-    if (new Decimal(next.reserve).plus(next.investments).greaterThan(income)) {
-      throw new Error("A distribuição supera a renda disponível");
-    }
     await saveDistribution(currentUser.uid, next);
     setDistribution(next);
     setReserveSyncError("");
@@ -567,8 +564,9 @@ export default function App({
       )}
       {distributionModal && (
         <DistributionModal
-          totalIncome={income}
           current={distribution}
+          commonBalance={balances.common}
+          reserveBalance={balances.reserve}
           close={() => setDistributionModal(false)}
           submit={persistDistribution}
         />
@@ -719,8 +717,8 @@ function HomeView({
           <button onClick={onDistribute}>
             <Landmark />
             <div>
-              <strong>Distribuir saldo</strong>
-              <small>Defina valores em reais para cada setor</small>
+              <strong>Mover dinheiro</strong>
+              <small>Transfira entre Uso comum e Reserva</small>
             </div>
           </button>
           <button onClick={() => setModal("expense")}>
@@ -2104,8 +2102,8 @@ function TransactionModal({
               </span>
             </div>
             <small>
-              Depois, use “Distribuir saldo” para mover valores para Reserva e
-              Investimentos.
+              Depois, use “Mover dinheiro” para transferir valores entre Uso
+              comum e Reserva.
             </small>
           </div>
         )}
@@ -2119,47 +2117,58 @@ function TransactionModal({
 }
 
 function DistributionModal({
-  totalIncome,
   current,
+  commonBalance,
+  reserveBalance,
   close,
   submit,
 }: {
-  totalIncome: number;
   current: Distribution;
+  commonBalance: number;
+  reserveBalance: number;
   close: () => void;
   submit: (value: Distribution) => Promise<void>;
 }) {
-  const [reserve, setReserve] = useState(
-    current.reserve ? String(current.reserve).replace(".", ",") : "",
-  );
-  const [investments, setInvestments] = useState(
-    current.investments ? String(current.investments).replace(".", ",") : "",
-  );
+  const [direction, setDirection] = useState<"deposit" | "withdraw">("deposit");
+  const [amount, setAmount] = useState("");
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
   const parseMoney = (value: string) =>
     Number(value.replace(/\./g, "").replace(",", ".")) || 0;
-  const reserveValue = parseMoney(reserve);
-  const investmentsValue = parseMoney(investments);
-  const distributed = new Decimal(reserveValue).plus(investmentsValue);
-  const commonValue = new Decimal(totalIncome).minus(distributed).toNumber();
+  const transferValue = parseMoney(amount);
+  const available = direction === "deposit" ? commonBalance : current.reserve;
+  const nextCommon = new Decimal(commonBalance)
+    .plus(direction === "withdraw" ? transferValue : -transferValue)
+    .toNumber();
+  const nextReserve = new Decimal(reserveBalance)
+    .plus(direction === "deposit" ? transferValue : -transferValue)
+    .toNumber();
 
   const confirm = async () => {
     setFormError("");
-    if (reserveValue < 0 || investmentsValue < 0) {
-      setFormError("Os valores não podem ser negativos.");
+    if (transferValue <= 0) {
+      setFormError("Informe um valor maior que zero.");
       return;
     }
-    if (distributed.greaterThan(totalIncome)) {
-      setFormError("Reserva e investimentos superam a renda disponível.");
+    if (new Decimal(transferValue).greaterThan(Math.max(0, available))) {
+      setFormError(
+        `Saldo insuficiente. Disponível: ${money.format(Math.max(0, available))}.`,
+      );
       return;
     }
     setSaving(true);
     try {
-      await submit({ reserve: reserveValue, investments: investmentsValue });
+      const reserve = new Decimal(current.reserve)
+        .plus(direction === "deposit" ? transferValue : -transferValue)
+        .toNumber();
+      await submit({ reserve, investments: current.investments });
       close();
-    } catch {
-      setFormError("Não foi possível salvar a distribuição no Firestore.");
+    } catch (error) {
+      setFormError(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível salvar a transferência no Firestore.",
+      );
     } finally {
       setSaving(false);
     }
@@ -2173,49 +2182,54 @@ function DistributionModal({
       <div className="modal">
         <div className="modal-head">
           <div>
-            <span>DISTRIBUIÇÃO MANUAL</span>
-            <h2>Distribuir saldo</h2>
+            <span>TRANSFERÊNCIA ENTRE SETORES</span>
+            <h2>Mover dinheiro</h2>
           </div>
           <button onClick={close} aria-label="Fechar">
             <X />
           </button>
         </div>
         <p className="modal-description">
-          Informe quanto da renda total deve ficar em cada setor.
+          Transfira sem alterar o saldo total da sua conta.
         </p>
-        <div className="form-grid">
-          <label>
-            Reserva (R$)
-            <input
-              inputMode="decimal"
-              placeholder="0,00"
-              value={reserve}
-              onChange={(event) => setReserve(event.target.value)}
-            />
-          </label>
-          <label>
-            Investimentos (R$)
-            <input
-              inputMode="decimal"
-              placeholder="0,00"
-              value={investments}
-              onChange={(event) => setInvestments(event.target.value)}
-            />
-          </label>
-        </div>
+        <label>
+          Operação
+          <select
+            value={direction}
+            onChange={(event) =>
+              setDirection(event.target.value as "deposit" | "withdraw")
+            }
+          >
+            <option value="deposit">Uso comum → Reserva</option>
+            <option value="withdraw">Reserva → Uso comum</option>
+          </select>
+        </label>
+        <label>
+          Valor (R$)
+          <input
+            inputMode="decimal"
+            placeholder="0,00"
+            value={amount}
+            onChange={(event) => setAmount(event.target.value)}
+          />
+        </label>
         <div className="distribution-summary">
           <div>
-            <span>Renda total</span>
-            <b>{money.format(totalIncome)}</b>
+            <span>Disponível na origem</span>
+            <b>{money.format(Math.max(0, available))}</b>
           </div>
-          <div className={commonValue < 0 ? "invalid" : "remaining"}>
-            <span>Uso comum</span>
-            <b>{money.format(commonValue)}</b>
+          <div className="remaining">
+            <span>Uso comum após transferência</span>
+            <b>{money.format(nextCommon)}</b>
+          </div>
+          <div className="remaining">
+            <span>Reserva após transferência</span>
+            <b>{money.format(nextReserve)}</b>
           </div>
         </div>
         {formError && <p className="form-error">{formError}</p>}
         <button className="submit" onClick={confirm} disabled={saving}>
-          {saving ? "Salvando..." : "Salvar distribuição"}
+          {saving ? "Transferindo..." : "Confirmar transferência"}
         </button>
       </div>
     </div>
