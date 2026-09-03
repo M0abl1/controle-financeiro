@@ -2166,7 +2166,8 @@ header h1 {
   color: var(--muted);
   font-size: 12px;
 }
-.calculator-fields input {
+.calculator-fields input,
+.calculator-fields select {
   width: 100%;
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -2175,7 +2176,8 @@ header h1 {
   background: #07090d;
   outline: none;
 }
-.calculator-fields input:focus {
+.calculator-fields input:focus,
+.calculator-fields select:focus {
   border-color: var(--purple);
   box-shadow: 0 0 0 3px #8c7cf420;
 }

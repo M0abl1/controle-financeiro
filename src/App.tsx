@@ -1901,20 +1901,28 @@ function InvestmentsView({ freeCash }: { freeCash: number }) {
 }
 
 function FinancialCalculatorView() {
+  const [product, setProduct] = useState("cdb");
+  const [institution, setInstitution] = useState("");
   const [initial, setInitial] = useState("1000");
   const [monthlyContribution, setMonthlyContribution] = useState("500");
   const [annualRate, setAnnualRate] = useState("12");
   const [period, setPeriod] = useState("24");
   const [inflation, setInflation] = useState("4,5");
   const [target, setTarget] = useState("20000");
+  const [managementFee, setManagementFee] = useState("0");
+  const [custodyFee, setCustodyFee] = useState("0");
   const parseNumber = (value: string) =>
     Number(value.replace(/\./g, "").replace(",", ".")) || 0;
 
   const result = useMemo(() => {
     const principal = Math.max(0, parseNumber(initial));
     const contribution = Math.max(0, parseNumber(monthlyContribution));
-    const yearlyRate = Math.max(-99.99, parseNumber(annualRate)) / 100;
-    const months = Math.min(1200, Math.max(1, Math.round(parseNumber(period))));
+    const grossYearlyRate = Math.max(-99.99, parseNumber(annualRate)) / 100;
+    const annualFees =
+      Math.max(0, parseNumber(managementFee) + parseNumber(custodyFee)) / 100;
+    const yearlyRate = Math.max(-0.9999, grossYearlyRate - annualFees);
+    const months = Math.min(1200, Math.max(1 / 30, parseNumber(period)));
+    const days = Math.max(1, Math.round(months * 30.4375));
     const inflationRate = Math.max(-99.99, parseNumber(inflation)) / 100;
     const targetValue = Math.max(0, parseNumber(target));
     const monthlyRate = Math.pow(1 + yearlyRate, 1 / 12) - 1;
@@ -1923,9 +1931,36 @@ function FinancialCalculatorView() {
       Math.abs(monthlyRate) < 1e-10
         ? contribution * months
         : contribution * ((factor - 1) / monthlyRate);
-    const futureValue = principal * factor + contributionFuture;
+    const preTaxValue = principal * factor + contributionFuture;
+    const grossMonthlyRate = Math.pow(1 + grossYearlyRate, 1 / 12) - 1;
+    const grossFactor = Math.pow(1 + grossMonthlyRate, months);
+    const grossContributionFuture =
+      Math.abs(grossMonthlyRate) < 1e-10
+        ? contribution * months
+        : contribution * ((grossFactor - 1) / grossMonthlyRate);
+    const grossFutureValue = principal * grossFactor + grossContributionFuture;
     const invested = principal + contribution * months;
+    const taxable = ["cdb", "tesouro", "fundo", "outro-tributavel"].includes(product);
+    const irRate = !taxable
+      ? 0
+      : days <= 180
+        ? 0.225
+        : days <= 360
+          ? 0.2
+          : days <= 720
+            ? 0.175
+            : 0.15;
+    const iofTable = [
+      96, 93, 90, 86, 83, 80, 76, 73, 70, 66, 63, 60, 56, 53, 50,
+      46, 43, 40, 36, 33, 30, 26, 23, 20, 16, 13, 10, 6, 3,
+    ];
+    const iofRate = taxable && days < 30 ? iofTable[Math.max(0, days - 1)] / 100 : 0;
+    const preTaxEarnings = Math.max(0, preTaxValue - invested);
+    const iof = preTaxEarnings * iofRate;
+    const incomeTax = Math.max(0, preTaxEarnings - iof) * irRate;
+    const futureValue = preTaxValue - iof - incomeTax;
     const earnings = futureValue - invested;
+    const fees = Math.max(0, grossFutureValue - preTaxValue);
     const realAnnualRate =
       ((1 + yearlyRate) / (1 + inflationRate) - 1) * 100;
     const presentValue =
@@ -1954,16 +1989,34 @@ function FinancialCalculatorView() {
     });
     return {
       months,
+      days,
       monthlyRate: monthlyRate * 100,
+      grossFutureValue,
+      preTaxValue,
       futureValue,
       invested,
       earnings,
+      fees,
+      incomeTax,
+      iof,
+      irRate: irRate * 100,
+      iofRate: iofRate * 100,
       realAnnualRate,
       presentValue,
       requiredContribution: Math.max(0, requiredContribution),
       chart,
     };
-  }, [initial, monthlyContribution, annualRate, period, inflation, target]);
+  }, [
+    product,
+    initial,
+    monthlyContribution,
+    annualRate,
+    period,
+    inflation,
+    target,
+    managementFee,
+    custodyFee,
+  ]);
 
   return (
     <section className="page calculator-page">
@@ -1972,8 +2025,8 @@ function FinancialCalculatorView() {
           <span>SIMULADOR FINANCEIRO</span>
           <h2>Projeção de juros e rendimentos</h2>
           <p>
-            Simule juros compostos, aportes mensais, inflação e o aporte
-            necessário para alcançar uma meta.
+            Compare o resultado bruto e líquido após taxas, impostos e
+            inflação.
           </p>
         </div>
         <div className="calculator-rate">
@@ -1992,6 +2045,22 @@ function FinancialCalculatorView() {
           </div>
           <div className="calculator-fields">
             <label>
+              Produto financeiro
+              <select value={product} onChange={(event) => setProduct(event.target.value)}>
+                <option value="cdb">CDB ou RDB</option>
+                <option value="lci-lca">LCI ou LCA isenta</option>
+                <option value="tesouro">Tesouro Direto</option>
+                <option value="fundo">Fundo de renda fixa</option>
+                <option value="poupanca">Poupança</option>
+                <option value="outro-tributavel">Outro tributável</option>
+                <option value="outro-isento">Outro isento</option>
+              </select>
+            </label>
+            <label>
+              Banco ou instituição
+              <input value={institution} onChange={(event) => setInstitution(event.target.value)} placeholder="Ex.: banco ou corretora" />
+            </label>
+            <label>
               Valor inicial (R$)
               <input inputMode="decimal" value={initial} onChange={(event) => setInitial(event.target.value)} />
             </label>
@@ -2005,7 +2074,7 @@ function FinancialCalculatorView() {
             </label>
             <label>
               Período (meses)
-              <input inputMode="numeric" value={period} onChange={(event) => setPeriod(event.target.value)} />
+              <input inputMode="decimal" value={period} onChange={(event) => setPeriod(event.target.value)} />
             </label>
             <label>
               Inflação anual (%)
@@ -2015,10 +2084,18 @@ function FinancialCalculatorView() {
               Meta desejada (R$)
               <input inputMode="decimal" value={target} onChange={(event) => setTarget(event.target.value)} />
             </label>
+            <label>
+              Taxa de administração anual (%)
+              <input inputMode="decimal" value={managementFee} onChange={(event) => setManagementFee(event.target.value)} />
+            </label>
+            <label>
+              Taxa de custódia anual (%)
+              <input inputMode="decimal" value={custodyFee} onChange={(event) => setCustodyFee(event.target.value)} />
+            </label>
           </div>
           <small className="field-hint">
-            Cálculo com aportes realizados no final de cada mês. Valores não
-            são salvos no banco de dados.
+            Informe a taxa oferecida pela instituição. Para prazos menores que
+            um mês, use decimal, como 0,5 para aproximadamente 15 dias.
           </small>
         </article>
 
@@ -2026,7 +2103,7 @@ function FinancialCalculatorView() {
           <div className="panel-head">
             <div>
               <span>EVOLUÇÃO</span>
-              <h2>Patrimônio acumulado</h2>
+              <h2>Patrimônio após taxas</h2>
             </div>
             <small>{result.months} meses</small>
           </div>
@@ -2050,10 +2127,14 @@ function FinancialCalculatorView() {
       </div>
 
       <div className="calculator-results">
-        <Metric label="VALOR FUTURO" value={money.format(result.futureValue)} />
+        <Metric label="VALOR BRUTO" value={money.format(result.grossFutureValue)} />
+        <Metric label="VALOR LÍQUIDO" value={money.format(result.futureValue)} />
         <Metric label="TOTAL APLICADO" value={money.format(result.invested)} />
-        <Metric label="RENDIMENTOS" value={money.format(result.earnings)} />
+        <Metric label="RENDIMENTO LÍQUIDO" value={money.format(result.earnings)} />
         <Metric label="VALOR REAL HOJE" value={money.format(result.presentValue)} />
+        <Metric label="TAXAS ESTIMADAS" value={money.format(result.fees)} />
+        <Metric label={`IR (${result.irRate.toFixed(1).replace(".", ",")}%)`} value={money.format(result.incomeTax)} />
+        <Metric label={`IOF (${result.iofRate.toFixed(0)}%)`} value={money.format(result.iof)} />
       </div>
       <article className="panel calculator-insight">
         <div>
