@@ -18,6 +18,7 @@ import {
   BarChart3,
   CalendarClock,
   CalendarDays,
+  Calculator,
   Download,
   Home,
   Landmark,
@@ -77,6 +78,7 @@ type View =
   | "common"
   | "reserve"
   | "investments"
+  | "calculator"
   | "categories"
   | "settings";
 const money = new Intl.NumberFormat("pt-BR", {
@@ -193,6 +195,7 @@ const nav = [
   { id: "common", label: "Uso comum", icon: WalletCards },
   { id: "reserve", label: "Reserva", icon: Shield },
   { id: "investments", label: "Investimentos", icon: TrendingUp },
+  { id: "calculator", label: "Calculadora", icon: Calculator },
   { id: "categories", label: "Categorias", icon: Tags },
   { id: "settings", label: "Configurações", icon: Settings },
 ] as const;
@@ -584,6 +587,7 @@ export default function App({
             freeCash={allocated.investments - expensesByPillar.investments}
           />
         )}
+        {view === "calculator" && <FinancialCalculatorView />}
         {view === "categories" && (
           <CategoriesView
             defaultCategories={defaultCategories}
@@ -1895,6 +1899,178 @@ function InvestmentsView({ freeCash }: { freeCash: number }) {
     </section>
   );
 }
+
+function FinancialCalculatorView() {
+  const [initial, setInitial] = useState("1000");
+  const [monthlyContribution, setMonthlyContribution] = useState("500");
+  const [annualRate, setAnnualRate] = useState("12");
+  const [period, setPeriod] = useState("24");
+  const [inflation, setInflation] = useState("4,5");
+  const [target, setTarget] = useState("20000");
+  const parseNumber = (value: string) =>
+    Number(value.replace(/\./g, "").replace(",", ".")) || 0;
+
+  const result = useMemo(() => {
+    const principal = Math.max(0, parseNumber(initial));
+    const contribution = Math.max(0, parseNumber(monthlyContribution));
+    const yearlyRate = Math.max(-99.99, parseNumber(annualRate)) / 100;
+    const months = Math.min(1200, Math.max(1, Math.round(parseNumber(period))));
+    const inflationRate = Math.max(-99.99, parseNumber(inflation)) / 100;
+    const targetValue = Math.max(0, parseNumber(target));
+    const monthlyRate = Math.pow(1 + yearlyRate, 1 / 12) - 1;
+    const factor = Math.pow(1 + monthlyRate, months);
+    const contributionFuture =
+      Math.abs(monthlyRate) < 1e-10
+        ? contribution * months
+        : contribution * ((factor - 1) / monthlyRate);
+    const futureValue = principal * factor + contributionFuture;
+    const invested = principal + contribution * months;
+    const earnings = futureValue - invested;
+    const realAnnualRate =
+      ((1 + yearlyRate) / (1 + inflationRate) - 1) * 100;
+    const presentValue =
+      futureValue / Math.pow(1 + inflationRate, months / 12);
+    const requiredContribution =
+      targetValue <= principal * factor
+        ? 0
+        : Math.abs(monthlyRate) < 1e-10
+          ? (targetValue - principal) / months
+          : ((targetValue - principal * factor) * monthlyRate) / (factor - 1);
+    const step = Math.max(1, Math.ceil(months / 60));
+    const points = Array.from(
+      { length: Math.floor(months / step) + 1 },
+      (_, index) => Math.min(index * step, months),
+    );
+    if (points.at(-1) !== months) points.push(months);
+    const chart = points.map((month) => {
+      const monthFactor = Math.pow(1 + monthlyRate, month);
+      const deposits = principal + contribution * month;
+      const value =
+        principal * monthFactor +
+        (Math.abs(monthlyRate) < 1e-10
+          ? contribution * month
+          : contribution * ((monthFactor - 1) / monthlyRate));
+      return { month, value, deposits };
+    });
+    return {
+      months,
+      monthlyRate: monthlyRate * 100,
+      futureValue,
+      invested,
+      earnings,
+      realAnnualRate,
+      presentValue,
+      requiredContribution: Math.max(0, requiredContribution),
+      chart,
+    };
+  }, [initial, monthlyContribution, annualRate, period, inflation, target]);
+
+  return (
+    <section className="page calculator-page">
+      <div className="calculator-heading">
+        <div>
+          <span>SIMULADOR FINANCEIRO</span>
+          <h2>Projeção de juros e rendimentos</h2>
+          <p>
+            Simule juros compostos, aportes mensais, inflação e o aporte
+            necessário para alcançar uma meta.
+          </p>
+        </div>
+        <div className="calculator-rate">
+          <small>TAXA MENSAL EQUIVALENTE</small>
+          <strong>{result.monthlyRate.toFixed(3).replace(".", ",")}%</strong>
+        </div>
+      </div>
+
+      <div className="calculator-layout">
+        <article className="panel calculator-form">
+          <div className="panel-head">
+            <div>
+              <span>PARÂMETROS</span>
+              <h2>Dados da simulação</h2>
+            </div>
+          </div>
+          <div className="calculator-fields">
+            <label>
+              Valor inicial (R$)
+              <input inputMode="decimal" value={initial} onChange={(event) => setInitial(event.target.value)} />
+            </label>
+            <label>
+              Aporte mensal (R$)
+              <input inputMode="decimal" value={monthlyContribution} onChange={(event) => setMonthlyContribution(event.target.value)} />
+            </label>
+            <label>
+              Rentabilidade anual (%)
+              <input inputMode="decimal" value={annualRate} onChange={(event) => setAnnualRate(event.target.value)} />
+            </label>
+            <label>
+              Período (meses)
+              <input inputMode="numeric" value={period} onChange={(event) => setPeriod(event.target.value)} />
+            </label>
+            <label>
+              Inflação anual (%)
+              <input inputMode="decimal" value={inflation} onChange={(event) => setInflation(event.target.value)} />
+            </label>
+            <label>
+              Meta desejada (R$)
+              <input inputMode="decimal" value={target} onChange={(event) => setTarget(event.target.value)} />
+            </label>
+          </div>
+          <small className="field-hint">
+            Cálculo com aportes realizados no final de cada mês. Valores não
+            são salvos no banco de dados.
+          </small>
+        </article>
+
+        <article className="panel calculator-chart">
+          <div className="panel-head">
+            <div>
+              <span>EVOLUÇÃO</span>
+              <h2>Patrimônio acumulado</h2>
+            </div>
+            <small>{result.months} meses</small>
+          </div>
+          <ResponsiveContainer width="100%" height={300}>
+            <AreaChart data={result.chart}>
+              <defs>
+                <linearGradient id="calculatorYield" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0" stopColor="#8b5cf6" stopOpacity=".48" />
+                  <stop offset="1" stopColor="#8b5cf6" stopOpacity="0" />
+                </linearGradient>
+              </defs>
+              <CartesianGrid stroke="#ffffff12" vertical={false} />
+              <XAxis dataKey="month" tickFormatter={(value) => `${value}m`} />
+              <YAxis hide />
+              <Tooltip formatter={(value) => money.format(Number(value))} labelFormatter={(value) => `${value} meses`} />
+              <Area type="monotone" dataKey="deposits" name="Total aplicado" stroke="#3b82f6" fill="transparent" strokeWidth={2} />
+              <Area type="monotone" dataKey="value" name="Com rendimentos" stroke="#a78bfa" fill="url(#calculatorYield)" strokeWidth={3} />
+            </AreaChart>
+          </ResponsiveContainer>
+        </article>
+      </div>
+
+      <div className="calculator-results">
+        <Metric label="VALOR FUTURO" value={money.format(result.futureValue)} />
+        <Metric label="TOTAL APLICADO" value={money.format(result.invested)} />
+        <Metric label="RENDIMENTOS" value={money.format(result.earnings)} />
+        <Metric label="VALOR REAL HOJE" value={money.format(result.presentValue)} />
+      </div>
+      <article className="panel calculator-insight">
+        <div>
+          <span>PLANO PARA A META</span>
+          <h2>{money.format(result.requiredContribution)} por mês</h2>
+          <p>Aporte estimado para atingir a meta no período informado.</p>
+        </div>
+        <div>
+          <span>RENTABILIDADE REAL ANUAL</span>
+          <h2>{result.realAnnualRate.toFixed(2).replace(".", ",")}%</h2>
+          <p>Resultado anual estimado após descontar a inflação.</p>
+        </div>
+      </article>
+    </section>
+  );
+}
+
 function SettingsView({
   transactions,
   setTransactions,
