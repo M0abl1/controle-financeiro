@@ -2176,6 +2176,51 @@ header h1 {
   color: var(--muted);
   text-transform: capitalize;
 }
+.loan-month-summary {
+  margin-bottom: 1.25rem;
+}
+.loan-month-head {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.loan-month-head h2 {
+  margin: 0.25rem 0 0;
+  text-transform: capitalize;
+}
+.loan-month-head label {
+  min-width: 190px;
+}
+.loan-month-total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 1rem 0;
+  padding: 1rem;
+  border-radius: 12px;
+  background: linear-gradient(120deg, #3b82f61a, #8b5cf61f);
+}
+.loan-month-total strong {
+  font-size: 1.5rem;
+  color: #a78bfa;
+}
+.loan-month-list > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 0;
+  border-top: 1px solid #ffffff10;
+}
+.loan-month-list span {
+  display: grid;
+  gap: 0.2rem;
+}
+.loan-month-list small {
+  color: var(--muted);
+}
 .modal textarea {
   width: 100%;
   resize: vertical;
@@ -2188,6 +2233,13 @@ header h1 {
 @media (max-width: 640px) {
   .loan-grid {
     grid-template-columns: 1fr;
+  }
+  .loan-month-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .loan-month-head label {
+    width: 100%;
   }
 }
 

@@ -2223,22 +2223,73 @@ function LoansView({
   onDelete: (loanId: string) => Promise<void>;
 }) {
   const [editing, setEditing] = useState<Loan | null | "new">(null);
+  const [selectedMonth, setSelectedMonth] = useState(localMonth());
   const total = loans.reduce((sum, loan) => sum + loan.value, 0);
   const installments = loans.reduce(
     (sum, loan) => sum + loan.installments,
     0,
   );
+  const monthlyInstallments = loans.flatMap((loan) => {
+    const installment = loanSchedule(loan).find(
+      (item) => item.month === selectedMonth,
+    );
+    return installment ? [{ loan, installment }] : [];
+  });
+  const monthlyTotal = monthlyInstallments.reduce(
+    (sum, item) => sum + item.installment.value,
+    0,
+  );
+  const selectedMonthLabel = selectedMonth
+    ? new Date(`${selectedMonth}-01T12:00:00`).toLocaleDateString("pt-BR", {
+        month: "long",
+        year: "numeric",
+      })
+    : "Selecione um mês";
   return (
     <section className="page loans-page">
       <div className="transaction-summary-grid">
         <Metric label="EMPRÉSTIMOS" value={String(loans.length)} />
         <Metric label="TOTAL EMPRESTADO" value={money.format(total)} />
         <Metric label="TOTAL DE PARCELAS" value={String(installments)} />
-        <Metric
-          label="MÉDIA POR EMPRÉSTIMO"
-          value={money.format(loans.length ? total / loans.length : 0)}
-        />
+        <Metric label="TOTAL NO MÊS" value={money.format(monthlyTotal)} />
       </div>
+      <article className="panel loan-month-summary">
+        <div className="loan-month-head">
+          <div>
+            <span>PARCELAS DO MÊS</span>
+            <h2>{selectedMonthLabel}</h2>
+          </div>
+          <label>
+            Selecionar mês
+            <input
+              type="month"
+              value={selectedMonth}
+              onChange={(event) => setSelectedMonth(event.target.value)}
+            />
+          </label>
+        </div>
+        <div className="loan-month-total">
+          <span>Total referente ao mês</span>
+          <strong>{money.format(monthlyTotal)}</strong>
+        </div>
+        {monthlyInstallments.length === 0 ? (
+          <p className="empty">Nenhuma parcela prevista neste mês.</p>
+        ) : (
+          <div className="loan-month-list">
+            {monthlyInstallments.map(({ loan, installment }) => (
+              <div key={`${loan.id}-${installment.month}`}>
+                <span>
+                  <b>{loan.borrower}</b>
+                  <small>
+                    Parcela {installment.number}/{loan.installments} · {loan.description}
+                  </small>
+                </span>
+                <strong>{money.format(installment.value)}</strong>
+              </div>
+            ))}
+          </div>
+        )}
+      </article>
       <div className="section-actions">
         <div>
           <span>CONTROLE SEM JUROS</span>
