@@ -21,6 +21,7 @@ import {
   Calculator,
   Download,
   Home,
+  HandCoins,
   Landmark,
   ListFilter,
   LogOut,
@@ -56,6 +57,7 @@ import {
   saveMoneyTransfer,
 } from "./transferRepository";
 import { getDistribution, saveDistribution } from "./distributionRepository";
+import { listLoans, removeLoan, saveLoan } from "./loanRepository";
 import {
   listCategories,
   removeCategory,
@@ -65,6 +67,7 @@ import type {
   Distribution,
   EntryKind,
   Goal,
+  Loan,
   MoneyLocation,
   MoneyTransfer,
   Pillar,
@@ -79,6 +82,7 @@ type View =
   | "reserve"
   | "investments"
   | "calculator"
+  | "loans"
   | "categories"
   | "settings";
 const money = new Intl.NumberFormat("pt-BR", {
@@ -196,6 +200,7 @@ const nav = [
   { id: "reserve", label: "Reserva", icon: Shield },
   { id: "investments", label: "Investimentos", icon: TrendingUp },
   { id: "calculator", label: "Calculadora", icon: Calculator },
+  { id: "loans", label: "Empréstimos", icon: HandCoins },
   { id: "categories", label: "Categorias", icon: Tags },
   { id: "settings", label: "Configurações", icon: Settings },
 ] as const;
@@ -218,6 +223,7 @@ export default function App({
   });
   const [transfers, setTransfers] = useState<MoneyTransfer[]>([]);
   const [goals, setGoals] = useState<Goal[]>(seedGoals);
+  const [loans, setLoans] = useState<Loan[]>([]);
   const [userCategories, setUserCategories] = useState<UserCategory[]>([]);
   const [reserveSyncError, setReserveSyncError] = useState("");
   const [search, setSearch] = useState("");
@@ -232,12 +238,14 @@ export default function App({
           cloudDistribution,
           cloudCategories,
           cloudTransfers,
+          cloudLoans,
         ] = await Promise.all([
           listReserves(currentUser.uid),
           listTransactions(currentUser.uid),
           getDistribution(currentUser.uid),
           listCategories(currentUser.uid),
           listTransfers(currentUser.uid),
+          listLoans(currentUser.uid),
         ]);
         if (!active) return;
         setGoals(cloudReserves);
@@ -245,6 +253,7 @@ export default function App({
         setDistribution(cloudDistribution);
         setUserCategories(cloudCategories);
         setTransfers(cloudTransfers);
+        setLoans(cloudLoans);
         setReserveSyncError("");
       } catch {
         if (active)
@@ -282,6 +291,21 @@ export default function App({
     if (!currentUser) throw new Error("Usuário não autenticado");
     await removeReserve(currentUser.uid, goalId);
     setGoals((current) => current.filter((item) => item.id !== goalId));
+  };
+  const persistLoan = async (loan: Loan) => {
+    if (!currentUser) throw new Error("Usuário não autenticado");
+    await saveLoan(currentUser.uid, loan);
+    setLoans((current) => {
+      const exists = current.some((item) => item.id === loan.id);
+      return exists
+        ? current.map((item) => (item.id === loan.id ? loan : item))
+        : [...current, loan];
+    });
+  };
+  const deleteLoan = async (loanId: string) => {
+    if (!currentUser) throw new Error("Usuário não autenticado");
+    await removeLoan(currentUser.uid, loanId);
+    setLoans((current) => current.filter((item) => item.id !== loanId));
   };
   const income = useMemo(
     () =>
@@ -588,6 +612,9 @@ export default function App({
           />
         )}
         {view === "calculator" && <FinancialCalculatorView />}
+        {view === "loans" && (
+          <LoansView loans={loans} onSave={persistLoan} onDelete={deleteLoan} />
+        )}
         {view === "categories" && (
           <CategoriesView
             defaultCategories={defaultCategories}
@@ -2164,6 +2191,191 @@ function FinancialCalculatorView() {
         </div>
       </article>
     </section>
+  );
+}
+
+function LoansView({
+  loans,
+  onSave,
+  onDelete,
+}: {
+  loans: Loan[];
+  onSave: (loan: Loan) => Promise<void>;
+  onDelete: (loanId: string) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState<Loan | null | "new">(null);
+  const total = loans.reduce((sum, loan) => sum + loan.value, 0);
+  const installments = loans.reduce(
+    (sum, loan) => sum + loan.installments,
+    0,
+  );
+  return (
+    <section className="page loans-page">
+      <div className="transaction-summary-grid">
+        <Metric label="EMPRÉSTIMOS" value={String(loans.length)} />
+        <Metric label="TOTAL EMPRESTADO" value={money.format(total)} />
+        <Metric label="TOTAL DE PARCELAS" value={String(installments)} />
+        <Metric
+          label="MÉDIA POR EMPRÉSTIMO"
+          value={money.format(loans.length ? total / loans.length : 0)}
+        />
+      </div>
+      <div className="section-actions">
+        <div>
+          <span>CONTROLE SEM JUROS</span>
+          <h2>Dinheiro emprestado</h2>
+        </div>
+        <button className="primary" onClick={() => setEditing("new")}>
+          <Plus /> Novo empréstimo
+        </button>
+      </div>
+      <div className="loan-grid">
+        {loans.length === 0 && (
+          <article className="panel empty-state">
+            <HandCoins />
+            <h2>Nenhum empréstimo cadastrado</h2>
+            <p>Registre valores emprestados para acompanhar os acordos.</p>
+            <button className="primary" onClick={() => setEditing("new")}>
+              <Plus /> Cadastrar empréstimo
+            </button>
+          </article>
+        )}
+        {loans.map((loan) => (
+          <article className="panel loan-card" key={loan.id}>
+            <div className="loan-card-head">
+              <span className="loan-icon"><HandCoins /></span>
+              <div>
+                <small>EMPRESTADO PARA</small>
+                <h3>{loan.borrower}</h3>
+              </div>
+            </div>
+            <p>{loan.description}</p>
+            <strong>{money.format(loan.value)}</strong>
+            <div className="loan-installments">
+              <span>{loan.installments}x sem juros</span>
+              <b>{money.format(loan.value / loan.installments)} por parcela</b>
+            </div>
+            <div className="goal-actions">
+              <button onClick={() => setEditing(loan)}>Editar</button>
+              <button
+                className="danger-link"
+                onClick={async () => {
+                  if (!confirm(`Excluir o empréstimo de ${loan.borrower}?`)) return;
+                  try {
+                    await onDelete(loan.id);
+                  } catch {
+                    alert("Não foi possível excluir o empréstimo.");
+                  }
+                }}
+              >
+                Excluir
+              </button>
+            </div>
+          </article>
+        ))}
+      </div>
+      {editing && (
+        <LoanModal
+          loan={editing === "new" ? undefined : editing}
+          close={() => setEditing(null)}
+          submit={async (loan) => {
+            await onSave(loan);
+            setEditing(null);
+          }}
+        />
+      )}
+    </section>
+  );
+}
+
+function LoanModal({
+  loan,
+  close,
+  submit,
+}: {
+  loan?: Loan;
+  close: () => void;
+  submit: (loan: Loan) => Promise<void>;
+}) {
+  const [borrower, setBorrower] = useState(loan?.borrower ?? "");
+  const [description, setDescription] = useState(loan?.description ?? "");
+  const [value, setValue] = useState(
+    loan ? loan.value.toLocaleString("pt-BR", { minimumFractionDigits: 2 }) : "",
+  );
+  const [installments, setInstallments] = useState(String(loan?.installments ?? 1));
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState("");
+  const numericValue = Number(value.replace(/\./g, "").replace(",", ".")) || 0;
+  const installmentCount = Number(installments);
+  const save = async () => {
+    setFormError("");
+    if (!borrower.trim() || !description.trim()) {
+      setFormError("Informe a pessoa e a descrição do empréstimo.");
+      return;
+    }
+    if (numericValue <= 0) {
+      setFormError("Informe um valor maior que zero.");
+      return;
+    }
+    if (!Number.isInteger(installmentCount) || installmentCount < 1 || installmentCount > 600) {
+      setFormError("Informe entre 1 e 600 parcelas.");
+      return;
+    }
+    setSaving(true);
+    try {
+      await submit({
+        id: loan?.id ?? crypto.randomUUID(),
+        borrower: borrower.trim(),
+        description: description.trim(),
+        value: numericValue,
+        installments: installmentCount,
+      });
+    } catch {
+      setFormError("Não foi possível salvar o empréstimo no Firestore.");
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
+      <div className="modal">
+        <div className="modal-head">
+          <div>
+            <span>DINHEIRO EMPRESTADO</span>
+            <h2>{loan ? "Editar empréstimo" : "Novo empréstimo"}</h2>
+          </div>
+          <button onClick={close} aria-label="Fechar"><X /></button>
+        </div>
+        <label>
+          Para quem foi emprestado
+          <input autoFocus maxLength={100} value={borrower} onChange={(event) => setBorrower(event.target.value)} placeholder="Nome da pessoa" />
+        </label>
+        <label>
+          Descrição
+          <textarea maxLength={300} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Motivo ou detalhes do empréstimo" rows={3} />
+        </label>
+        <div className="form-grid">
+          <label>
+            Valor total (R$)
+            <input inputMode="decimal" value={value} onChange={(event) => setValue(event.target.value)} placeholder="0,00" />
+          </label>
+          <label>
+            Quantidade de parcelas
+            <input type="number" min="1" max="600" step="1" value={installments} onChange={(event) => setInstallments(event.target.value)} />
+          </label>
+        </div>
+        {numericValue > 0 && installmentCount > 0 && (
+          <div className="distribution-summary">
+            <div><span>Valor da parcela</span><b>{money.format(numericValue / installmentCount)}</b></div>
+            <div className="remaining"><span>Juros</span><b>R$ 0,00</b></div>
+          </div>
+        )}
+        {formError && <p className="form-error">{formError}</p>}
+        <button className="submit" onClick={save} disabled={saving}>
+          {saving ? "Salvando..." : "Salvar empréstimo"}
+        </button>
+      </div>
+    </div>
   );
 }
 

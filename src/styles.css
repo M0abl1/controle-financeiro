@@ -2103,6 +2103,68 @@ header h1 {
 .transfer-row small {
   color: var(--muted);
 }
+.loan-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+.loan-grid .empty-state {
+  grid-column: 1 / -1;
+}
+.loan-card {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.loan-card-head {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+}
+.loan-card-head h3 {
+  margin: 0.2rem 0 0;
+}
+.loan-icon {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  color: #a78bfa;
+  background: #8b5cf622;
+}
+.loan-card > p {
+  min-height: 2.8em;
+  margin: 0;
+  color: var(--muted);
+}
+.loan-card > strong {
+  font-size: 1.65rem;
+}
+.loan-installments {
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.75rem;
+  border-radius: 10px;
+  background: #ffffff08;
+}
+.loan-installments span {
+  color: var(--muted);
+}
+.modal textarea {
+  width: 100%;
+  resize: vertical;
+}
+@media (max-width: 1000px) {
+  .loan-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 640px) {
+  .loan-grid {
+    grid-template-columns: 1fr;
+  }
+}
 
 .calculator-page {
   max-width: 1400px;

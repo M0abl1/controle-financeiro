@@ -46,3 +46,10 @@ export interface MoneyTransfer {
   date: string;
   reversed: boolean;
 }
+export interface Loan {
+  id: string;
+  description: string;
+  borrower: string;
+  value: number;
+  installments: number;
+}

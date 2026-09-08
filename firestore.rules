@@ -103,6 +103,19 @@ service cloud.firestore {
         && request.resource.data.reversed is bool;
     }
 
+    function validLoan() {
+      return request.resource.data.keys().hasOnly([
+          'description', 'borrower', 'value', 'installments'
+        ])
+        && validText(request.resource.data.description, 300)
+        && validText(request.resource.data.borrower, 100)
+        && validAmount(request.resource.data.value)
+        && request.resource.data.value > 0
+        && request.resource.data.installments is int
+        && request.resource.data.installments >= 1
+        && request.resource.data.installments <= 600;
+    }
+
     match /usuarios/{uid} {
       allow read: if owns(uid);
       allow create: if owns(uid)
@@ -142,6 +155,14 @@ service cloud.firestore {
           .hasOnly(['reversed'])
         && request.resource.data.reversed == true;
       allow delete: if false;
+    }
+
+    match /dados/{uid}/emprestimos/{loanId} {
+      allow read: if owns(uid);
+      allow create, update: if owns(uid)
+        && loanId.size() <= 128
+        && validLoan();
+      allow delete: if owns(uid);
     }
 
     match /dados/{uid}/configuracoes/distribuicao {
