@@ -2151,6 +2151,31 @@ header h1 {
 .loan-installments span {
   color: var(--muted);
 }
+.loan-schedule {
+  border-top: 1px solid #ffffff12;
+  padding-top: 0.8rem;
+}
+.loan-schedule summary {
+  color: #a78bfa;
+  font-weight: 700;
+  cursor: pointer;
+}
+.loan-schedule > div {
+  max-height: 240px;
+  margin-top: 0.7rem;
+  overflow-y: auto;
+}
+.loan-schedule-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid #ffffff0d;
+}
+.loan-schedule-row span {
+  color: var(--muted);
+  text-transform: capitalize;
+}
 .modal textarea {
   width: 100%;
   resize: vertical;

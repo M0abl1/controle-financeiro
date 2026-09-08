@@ -105,7 +105,7 @@ service cloud.firestore {
 
     function validLoan() {
       return request.resource.data.keys().hasOnly([
-          'description', 'borrower', 'value', 'installments'
+          'description', 'borrower', 'value', 'installments', 'startMonth'
         ])
         && validText(request.resource.data.description, 300)
         && validText(request.resource.data.borrower, 100)
@@ -113,7 +113,9 @@ service cloud.firestore {
         && request.resource.data.value > 0
         && request.resource.data.installments is int
         && request.resource.data.installments >= 1
-        && request.resource.data.installments <= 600;
+        && request.resource.data.installments <= 600
+        && request.resource.data.startMonth is string
+        && request.resource.data.startMonth.matches('^\\d{4}-\\d{2}$');
     }
 
     match /usuarios/{uid} {

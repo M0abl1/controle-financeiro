@@ -52,4 +52,5 @@ export interface Loan {
   borrower: string;
   value: number;
   installments: number;
+  startMonth: string;
 }

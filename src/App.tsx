@@ -96,6 +96,25 @@ const localDate = () => {
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 };
+const localMonth = () => localDate().slice(0, 7);
+function loanSchedule(loan: Pick<Loan, "value" | "installments" | "startMonth">) {
+  const totalCents = Math.round(loan.value * 100);
+  const baseCents = Math.floor(totalCents / loan.installments);
+  const remainder = totalCents - baseCents * loan.installments;
+  const [year, month] = loan.startMonth.split("-").map(Number);
+  return Array.from({ length: loan.installments }, (_, index) => {
+    const date = new Date(year, month - 1 + index, 1);
+    return {
+      number: index + 1,
+      month: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`,
+      label: date.toLocaleDateString("pt-BR", {
+        month: "long",
+        year: "numeric",
+      }),
+      value: (baseCents + (index < remainder ? 1 : 0)) / 100,
+    };
+  });
+}
 const colors = [
   "#8b5cf6",
   "#3b82f6",
@@ -2240,7 +2259,9 @@ function LoansView({
             </button>
           </article>
         )}
-        {loans.map((loan) => (
+        {loans.map((loan) => {
+          const schedule = loanSchedule(loan);
+          return (
           <article className="panel loan-card" key={loan.id}>
             <div className="loan-card-head">
               <span className="loan-icon"><HandCoins /></span>
@@ -2253,8 +2274,21 @@ function LoansView({
             <strong>{money.format(loan.value)}</strong>
             <div className="loan-installments">
               <span>{loan.installments}x sem juros</span>
-              <b>{money.format(loan.value / loan.installments)} por parcela</b>
+              <b>Uma parcela por mês</b>
             </div>
+            <details className="loan-schedule">
+              <summary>Ver cronograma mensal</summary>
+              <div>
+                {schedule.map((installment) => (
+                  <div className="loan-schedule-row" key={installment.month}>
+                    <span>
+                      {installment.number}/{loan.installments} · {installment.label}
+                    </span>
+                    <b>{money.format(installment.value)}</b>
+                  </div>
+                ))}
+              </div>
+            </details>
             <div className="goal-actions">
               <button onClick={() => setEditing(loan)}>Editar</button>
               <button
@@ -2272,7 +2306,8 @@ function LoansView({
               </button>
             </div>
           </article>
-        ))}
+          );
+        })}
       </div>
       {editing && (
         <LoanModal
@@ -2303,6 +2338,7 @@ function LoanModal({
     loan ? loan.value.toLocaleString("pt-BR", { minimumFractionDigits: 2 }) : "",
   );
   const [installments, setInstallments] = useState(String(loan?.installments ?? 1));
+  const [startMonth, setStartMonth] = useState(loan?.startMonth ?? localMonth());
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
   const numericValue = Number(value.replace(/\./g, "").replace(",", ".")) || 0;
@@ -2321,6 +2357,10 @@ function LoanModal({
       setFormError("Informe entre 1 e 600 parcelas.");
       return;
     }
+    if (!/^\d{4}-\d{2}$/.test(startMonth)) {
+      setFormError("Informe o mês da primeira parcela.");
+      return;
+    }
     setSaving(true);
     try {
       await submit({
@@ -2329,6 +2369,7 @@ function LoanModal({
         description: description.trim(),
         value: numericValue,
         installments: installmentCount,
+        startMonth,
       });
     } catch {
       setFormError("Não foi possível salvar o empréstimo no Firestore.");
@@ -2362,6 +2403,10 @@ function LoanModal({
           <label>
             Quantidade de parcelas
             <input type="number" min="1" max="600" step="1" value={installments} onChange={(event) => setInstallments(event.target.value)} />
+          </label>
+          <label>
+            Mês da primeira parcela
+            <input type="month" value={startMonth} onChange={(event) => setStartMonth(event.target.value)} />
           </label>
         </div>
         {numericValue > 0 && installmentCount > 0 && (

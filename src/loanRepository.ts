@@ -22,6 +22,9 @@ export async function listLoans(uid: string): Promise<Loan[]> {
       borrower: String(item.data().borrower ?? ""),
       value: Number(item.data().value ?? 0),
       installments: Number(item.data().installments ?? 1),
+      startMonth: String(
+        item.data().startMonth ?? new Date().toISOString().slice(0, 7),
+      ),
     }))
     .sort((a, b) => a.borrower.localeCompare(b.borrower, "pt-BR"));
 }
@@ -33,6 +36,7 @@ export async function saveLoan(uid: string, loan: Loan) {
     borrower: loan.borrower,
     value: loan.value,
     installments: loan.installments,
+    startMonth: loan.startMonth,
   });
 }
 
