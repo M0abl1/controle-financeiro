@@ -59,6 +59,11 @@ import {
 } from "./transferRepository";
 import { getDistribution, saveDistribution } from "./distributionRepository";
 import { listLoans, removeLoan, saveLoan } from "./loanRepository";
+import { parseItauStatement } from "./itauStatementParser";
+import {
+  getStatementConfig,
+  importStatement,
+} from "./statementRepository";
 import {
   listCategories,
   removeCategory,
@@ -73,6 +78,7 @@ import type {
   MoneyTransfer,
   Pillar,
   Transaction,
+  StatementConfig,
   UserCategory,
 } from "./types";
 
@@ -244,6 +250,8 @@ export default function App({
   const [transfers, setTransfers] = useState<MoneyTransfer[]>([]);
   const [goals, setGoals] = useState<Goal[]>(seedGoals);
   const [loans, setLoans] = useState<Loan[]>([]);
+  const [statementConfig, setStatementConfig] =
+    useState<StatementConfig | null>(null);
   const [userCategories, setUserCategories] = useState<UserCategory[]>([]);
   const [reserveSyncError, setReserveSyncError] = useState("");
   const [search, setSearch] = useState("");
@@ -259,6 +267,7 @@ export default function App({
           cloudCategories,
           cloudTransfers,
           cloudLoans,
+          cloudStatement,
         ] = await Promise.all([
           listReserves(currentUser.uid),
           listTransactions(currentUser.uid),
@@ -266,6 +275,7 @@ export default function App({
           listCategories(currentUser.uid),
           listTransfers(currentUser.uid),
           listLoans(currentUser.uid),
+          getStatementConfig(currentUser.uid),
         ]);
         if (!active) return;
         setGoals(cloudReserves);
@@ -274,6 +284,7 @@ export default function App({
         setUserCategories(cloudCategories);
         setTransfers(cloudTransfers);
         setLoans(cloudLoans);
+        setStatementConfig(cloudStatement);
         setReserveSyncError("");
       } catch {
         if (active)
@@ -334,9 +345,23 @@ export default function App({
         .reduce((s, t) => s + t.value, 0),
     [transactions],
   );
+  const balanceTransactions = useMemo(
+    () =>
+      statementConfig
+        ? transactions.filter((transaction) => !transaction.id.startsWith("itau-"))
+        : transactions,
+    [statementConfig, transactions],
+  );
+  const manualIncome = useMemo(
+    () =>
+      balanceTransactions
+        .filter((transaction) => transaction.kind === "income" && !transaction.reversed)
+        .reduce((sum, transaction) => sum + transaction.value, 0),
+    [balanceTransactions],
+  );
   const expensesByPillar = useMemo(
     () =>
-      transactions
+      balanceTransactions
         .filter(
           (transaction) =>
             !transaction.reversed &&
@@ -350,11 +375,11 @@ export default function App({
           },
           { common: 0, reserve: 0, investments: 0 } as Record<Pillar, number>,
         ),
-    [transactions],
+    [balanceTransactions],
   );
   const futureExpensesByPillar = useMemo(
     () =>
-      transactions
+      balanceTransactions
         .filter(
           (transaction) =>
             !transaction.reversed &&
@@ -368,14 +393,17 @@ export default function App({
           },
           { common: 0, reserve: 0, investments: 0 } as Record<Pillar, number>,
         ),
-    [transactions],
+    [balanceTransactions],
   );
   const allocated = {
     reserve: Math.max(0, distribution.reserve),
     investments: Math.max(0, distribution.investments),
     common: Math.max(
       0,
-      income - distribution.reserve - distribution.investments,
+      (statementConfig?.balance ?? income) +
+        manualIncome -
+        distribution.reserve -
+        distribution.investments,
     ),
   };
   const balances = {
@@ -386,16 +414,20 @@ export default function App({
       expensesByPillar.investments +
       seedAssets.reduce((s, a) => s + a.currentPrice * a.quantity, 0),
   };
-  const total = balances.common + balances.reserve + balances.investments;
+  const total = statementConfig
+    ? statementConfig.balance +
+      manualIncome -
+      Object.values(expensesByPillar).reduce((sum, value) => sum + value, 0)
+    : balances.common + balances.reserve + balances.investments;
   const projectedBalances = {
     common: balances.common - futureExpensesByPillar.common,
     reserve: balances.reserve - futureExpensesByPillar.reserve,
     investments: balances.investments - futureExpensesByPillar.investments,
   };
-  const projectedTotal =
-    projectedBalances.common +
-    projectedBalances.reserve +
-    projectedBalances.investments;
+  const projectedTotal = total - Object.values(futureExpensesByPillar).reduce(
+    (sum, value) => sum + value,
+    0,
+  );
   const addTransaction = async (entry: Omit<Transaction, "id">) => {
     if (!currentUser) throw new Error("Usuário não autenticado");
     if (entry.kind === "expense" && entry.reserveId) {
@@ -435,6 +467,29 @@ export default function App({
       items.map((item) => saveTransaction(currentUser.uid, item)),
     );
     setTransactions(items);
+  };
+  const importItauPdf = async (file: File) => {
+    if (!currentUser) throw new Error("Usuário não autenticado");
+    const parsed = await parseItauStatement(file);
+    const result = await importStatement(
+      currentUser.uid,
+      parsed.config,
+      parsed.transactions,
+    );
+    setTransactions(await listTransactions(currentUser.uid));
+    setStatementConfig(parsed.config);
+    return { ...result, balance: parsed.config.balance };
+  };
+  const changeTransactionCategory = async (
+    transaction: Transaction,
+    category: string,
+  ) => {
+    if (!currentUser) throw new Error("Usuário não autenticado");
+    const updated = { ...transaction, category };
+    await saveTransaction(currentUser.uid, updated);
+    setTransactions((current) =>
+      current.map((item) => (item.id === transaction.id ? updated : item)),
+    );
   };
   const persistTransfer = async (
     from: MoneyLocation,
@@ -506,7 +561,10 @@ export default function App({
     );
   };
   const categoryOptions = useMemo(() => {
-    const options: Array<readonly [string, string]> = [...defaultCategories];
+    const options: Array<readonly [string, string]> = [
+      ["Não categorizado", "❔"],
+      ...defaultCategories,
+    ];
     const names = new Set(options.map(([name]) => name.toLocaleLowerCase()));
     userCategories.forEach((category) => {
       if (!names.has(category.name.toLocaleLowerCase())) {
@@ -601,6 +659,9 @@ export default function App({
             categories={categoryOptions}
             onNewTransaction={() => setModal("expense")}
             onUndo={undoTransaction}
+            onImportStatement={importItauPdf}
+            statementConfig={statementConfig}
+            onCategoryChange={changeTransactionCategory}
           />
         )}
         {view === "common" && (
@@ -903,11 +964,22 @@ function TransactionsView({
   categories,
   onNewTransaction,
   onUndo,
+  onImportStatement,
+  statementConfig,
+  onCategoryChange,
 }: {
   transactions: Transaction[];
   categories: ReadonlyArray<readonly [string, string]>;
   onNewTransaction: () => void;
   onUndo: (transaction: Transaction) => Promise<void>;
+  onImportStatement: (
+    file: File,
+  ) => Promise<{ imported: number; skipped: number; balance: number }>;
+  statementConfig: StatementConfig | null;
+  onCategoryChange: (
+    transaction: Transaction,
+    category: string,
+  ) => Promise<void>;
 }) {
   const today = localDate();
   const [startDate, setStartDate] = useState(`${today.slice(0, 8)}01`);
@@ -917,6 +989,8 @@ function TransactionsView({
   const [category, setCategory] = useState("all");
   const [sort, setSort] = useState<"newest" | "oldest" | "highest">("newest");
   const [query, setQuery] = useState("");
+  const [importingPdf, setImportingPdf] = useState(false);
+  const [importMessage, setImportMessage] = useState("");
   const categoryNames = Array.from(
     new Set([
       ...categories.map(([name]) => name),
@@ -1016,6 +1090,52 @@ function TransactionsView({
         <Metric label="RECEITAS" value={money.format(income)} />
         <Metric label="SALDO" value={money.format(income - expense)} />
       </div>
+      <article className="panel statement-import-panel">
+        <div>
+          <span>EXTRATO BANCÁRIO</span>
+          <h2>Importar extrato Itaú em PDF</h2>
+          <p>
+            Atualiza o saldo principal e adiciona somente lançamentos ainda não
+            importados. As categorias ficam abertas para classificação manual.
+          </p>
+          {statementConfig && (
+            <small>
+              Último saldo importado: {money.format(statementConfig.balance)} ·{" "}
+              {new Date(statementConfig.importedAt).toLocaleString("pt-BR")}
+            </small>
+          )}
+          {importMessage && <strong className="success-text">{importMessage}</strong>}
+        </div>
+        <label className={`primary file ${importingPdf ? "disabled" : ""}`}>
+          <Upload size={17} /> {importingPdf ? "Lendo PDF..." : "Selecionar PDF"}
+          <input
+            type="file"
+            accept="application/pdf,.pdf"
+            disabled={importingPdf}
+            onChange={async (event) => {
+              const file = event.target.files?.[0];
+              event.target.value = "";
+              if (!file) return;
+              setImportingPdf(true);
+              setImportMessage("");
+              try {
+                const result = await onImportStatement(file);
+                setImportMessage(
+                  `${result.imported} novo(s), ${result.skipped} duplicado(s) ignorado(s). Saldo: ${money.format(result.balance)}.`,
+                );
+              } catch (error) {
+                alert(
+                  error instanceof Error
+                    ? error.message
+                    : "Não foi possível importar o extrato.",
+                );
+              } finally {
+                setImportingPdf(false);
+              }
+            }}
+          />
+        </label>
+      </article>
       <article className="panel transaction-table-panel">
         <div className="transaction-table-tools">
           <label className="search">
@@ -1060,9 +1180,21 @@ function TransactionsView({
                     <b>{transaction.description}</b>
                   </td>
                   <td>
-                    <span className="category-chip">
-                      {transaction.category}
-                    </span>
+                    <select
+                      className="category-select"
+                      value={transaction.category}
+                      onChange={async (event) => {
+                        try {
+                          await onCategoryChange(transaction, event.target.value);
+                        } catch {
+                          alert("Não foi possível atualizar a categoria.");
+                        }
+                      }}
+                    >
+                      {categoryNames.map((name) => (
+                        <option value={name} key={name}>{name}</option>
+                      ))}
+                    </select>
                   </td>
                   <td>
                     {pillarLabel(transaction.pillar)}

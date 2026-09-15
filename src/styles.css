@@ -1359,6 +1359,14 @@ td {
   }
 }
 @media (max-width: 620px) {
+  .statement-import-panel {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .statement-import-panel .file {
+    justify-content: center;
+    width: 100%;
+  }
   header {
     margin-bottom: 22px;
   }
@@ -2007,6 +2015,46 @@ header h1 {
 }
 .transaction-table-panel {
   padding: 20px;
+}
+.statement-import-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.25rem;
+  margin-bottom: 1rem;
+}
+.statement-import-panel h2 {
+  margin: 0.25rem 0 0.4rem;
+}
+.statement-import-panel p {
+  max-width: 720px;
+  margin: 0;
+  color: var(--muted);
+}
+.statement-import-panel small,
+.statement-import-panel .success-text {
+  display: block;
+  margin-top: 0.55rem;
+}
+.statement-import-panel .file {
+  flex: 0 0 auto;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.statement-import-panel .file.disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+.statement-import-panel .file input {
+  display: none;
+}
+.category-select {
+  max-width: 190px;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid #ffffff18;
+  border-radius: 8px;
+  color: var(--text);
+  background: #101217;
 }
 .transaction-table-tools {
   display: flex;

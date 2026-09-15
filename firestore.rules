@@ -118,6 +118,20 @@ service cloud.firestore {
         && request.resource.data.startMonth.matches('^\\d{4}-\\d{2}$');
     }
 
+    function validStatement() {
+      return request.resource.data.keys().hasOnly([
+          'balance', 'importedAt', 'periodStart', 'periodEnd', 'sourceHash'
+        ])
+        && request.resource.data.balance is number
+        && request.resource.data.balance >= -1000000000000
+        && request.resource.data.balance <= 1000000000000
+        && validText(request.resource.data.importedAt, 40)
+        && validDate(request.resource.data.periodStart)
+        && validDate(request.resource.data.periodEnd)
+        && request.resource.data.sourceHash is string
+        && request.resource.data.sourceHash.matches('^[a-f0-9]{64}$');
+    }
+
     match /usuarios/{uid} {
       allow read: if owns(uid);
       allow create: if owns(uid)
@@ -171,6 +185,12 @@ service cloud.firestore {
       allow read: if owns(uid);
       allow create, update: if owns(uid) && validDistribution();
       allow delete: if false;
+    }
+
+    match /dados/{uid}/configuracoes/extrato {
+      allow read: if owns(uid);
+      allow create, update: if owns(uid) && validStatement();
+      allow delete: if owns(uid);
     }
 
     match /dados/{uid}/categorias/{categoryId} {

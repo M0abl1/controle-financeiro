@@ -54,3 +54,10 @@ export interface Loan {
   installments: number;
   startMonth: string;
 }
+export interface StatementConfig {
+  balance: number;
+  importedAt: string;
+  periodStart: string;
+  periodEnd: string;
+  sourceHash: string;
+}
