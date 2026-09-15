@@ -242,6 +242,8 @@ export default function App({
   const [transactions, setTransactions] =
     useState<Transaction[]>(seedTransactions);
   const [modal, setModal] = useState<EntryKind | null>(null);
+  const [selectedTransaction, setSelectedTransaction] =
+    useState<Transaction | null>(null);
   const [distributionModal, setDistributionModal] = useState(false);
   const [distribution, setDistribution] = useState<Distribution>({
     reserve: 0,
@@ -491,6 +493,13 @@ export default function App({
       current.map((item) => (item.id === transaction.id ? updated : item)),
     );
   };
+  const updateTransactionDetails = async (updated: Transaction) => {
+    if (!currentUser) throw new Error("Usuário não autenticado");
+    await saveTransaction(currentUser.uid, updated);
+    setTransactions((current) =>
+      current.map((item) => (item.id === updated.id ? updated : item)),
+    );
+  };
   const persistTransfer = async (
     from: MoneyLocation,
     to: MoneyLocation,
@@ -651,6 +660,7 @@ export default function App({
             transactions={transactions}
             setModal={setModal}
             onDistribute={() => setDistributionModal(true)}
+            onSelectTransaction={setSelectedTransaction}
           />
         )}
         {view === "transactions" && (
@@ -757,6 +767,14 @@ export default function App({
           submit={persistTransfer}
         />
       )}
+      {selectedTransaction && (
+        <TransactionDetailsModal
+          transaction={selectedTransaction}
+          categories={categoryOptions}
+          close={() => setSelectedTransaction(null)}
+          submit={updateTransactionDetails}
+        />
+      )}
     </div>
   );
 }
@@ -772,6 +790,7 @@ function HomeView({
   transactions,
   setModal,
   onDistribute,
+  onSelectTransaction,
 }: {
   total: number;
   projectedTotal: number;
@@ -783,6 +802,7 @@ function HomeView({
   transactions: Transaction[];
   setModal: (v: EntryKind) => void;
   onDistribute: () => void;
+  onSelectTransaction: (transaction: Transaction) => void;
 }) {
   return (
     <section className="page">
@@ -884,7 +904,10 @@ function HomeView({
             </div>
             <BarChart3 />
           </div>
-          <TransactionList transactions={transactions.slice(0, 5)} />
+          <TransactionList
+            transactions={transactions.slice(0, 5)}
+            onSelect={onSelectTransaction}
+          />
         </article>
         <article className="panel quick">
           <div className="panel-head">
@@ -2809,7 +2832,13 @@ function Metric({ label, value }: { label: string; value: string }) {
     </article>
   );
 }
-function TransactionList({ transactions }: { transactions: Transaction[] }) {
+function TransactionList({
+  transactions,
+  onSelect,
+}: {
+  transactions: Transaction[];
+  onSelect?: (transaction: Transaction) => void;
+}) {
   return (
     <div className="transactions">
       {transactions.length === 0 && (
@@ -2817,8 +2846,17 @@ function TransactionList({ transactions }: { transactions: Transaction[] }) {
       )}
       {transactions.map((t) => (
         <div
-          className={`transaction ${t.reversed ? "reversed" : t.kind === "expense" && t.date > localDate() ? "future" : ""}`}
+          className={`transaction ${onSelect ? "clickable" : ""} ${t.reversed ? "reversed" : t.kind === "expense" && t.date > localDate() ? "future" : ""}`}
           key={t.id}
+          onClick={() => onSelect?.(t)}
+          onKeyDown={(event) => {
+            if (onSelect && (event.key === "Enter" || event.key === " ")) {
+              event.preventDefault();
+              onSelect(t);
+            }
+          }}
+          role={onSelect ? "button" : undefined}
+          tabIndex={onSelect ? 0 : undefined}
         >
           <span className={t.kind}>
             <span>{t.kind === "income" ? "↙" : "↗"}</span>
@@ -2840,6 +2878,141 @@ function TransactionList({ transactions }: { transactions: Transaction[] }) {
           </strong>
         </div>
       ))}
+    </div>
+  );
+}
+function TransactionDetailsModal({
+  transaction,
+  categories,
+  close,
+  submit,
+}: {
+  transaction: Transaction;
+  categories: ReadonlyArray<readonly [string, string]>;
+  close: () => void;
+  submit: (transaction: Transaction) => Promise<void>;
+}) {
+  const [description, setDescription] = useState(transaction.description);
+  const [category, setCategory] = useState(transaction.category);
+  const [date, setDate] = useState(transaction.date);
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState("");
+  const importedFromStatement = transaction.id.startsWith("itau-");
+
+  const confirm = async () => {
+    const normalizedDescription = description.trim();
+    if (!normalizedDescription) {
+      setFormError("Informe um nome para o lançamento.");
+      return;
+    }
+    if (normalizedDescription.length > 200) {
+      setFormError("O nome deve ter no máximo 200 caracteres.");
+      return;
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      setFormError("Informe uma data válida.");
+      return;
+    }
+    setSaving(true);
+    setFormError("");
+    try {
+      await submit({
+        ...transaction,
+        description: normalizedDescription,
+        category,
+        date,
+      });
+      close();
+    } catch (error) {
+      setFormError(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível atualizar o lançamento.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div
+      className="modal-backdrop"
+      onMouseDown={(event) => event.target === event.currentTarget && close()}
+    >
+      <div className="modal transaction-details-modal">
+        <div className="modal-head">
+          <div>
+            <span>DETALHES DO LANÇAMENTO</span>
+            <h2>Consultar e editar</h2>
+          </div>
+          <button onClick={close} aria-label="Fechar">
+            <X />
+          </button>
+        </div>
+        <div className="transaction-id-box">
+          <small>ID próprio e imutável</small>
+          <code>{transaction.id.toUpperCase()}</code>
+          <span>
+            {importedFromStatement ? "Importado do extrato Itaú" : "Lançamento manual"}
+          </span>
+        </div>
+        <div className="transaction-detail-summary">
+          <div>
+            <small>Valor</small>
+            <strong>{money.format(transaction.value)}</strong>
+          </div>
+          <div>
+            <small>Tipo</small>
+            <strong>{transaction.kind === "income" ? "Entrada" : "Saída"}</strong>
+          </div>
+          <div>
+            <small>Setor</small>
+            <strong>
+              {transaction.pillar === "common"
+                ? "Uso comum"
+                : transaction.pillar === "reserve"
+                  ? "Reserva"
+                  : "Investimentos"}
+            </strong>
+          </div>
+        </div>
+        <label>
+          Nome do lançamento
+          <input
+            autoFocus
+            maxLength={200}
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+          />
+        </label>
+        <label>
+          Categoria
+          <select value={category} onChange={(event) => setCategory(event.target.value)}>
+            {!categories.some(([name]) => name === category) && (
+              <option value={category}>{category}</option>
+            )}
+            {categories.map(([name, emoji]) => (
+              <option value={name} key={name}>
+                {emoji.startsWith("data:") ? "Personalizada" : emoji} {name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Data
+          <input type="date" value={date} onChange={(event) => setDate(event.target.value)} />
+        </label>
+        {transaction.reserveName && (
+          <p className="field-help">Reserva vinculada: {transaction.reserveName}</p>
+        )}
+        {transaction.reversed && (
+          <p className="field-help">Este lançamento está estornado.</p>
+        )}
+        {formError && <p className="form-error">{formError}</p>}
+        <button className="submit" onClick={confirm} disabled={saving}>
+          {saving ? "Salvando..." : "Salvar alterações"}
+        </button>
+      </div>
     </div>
   );
 }
