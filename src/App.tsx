@@ -27,6 +27,7 @@ import {
   LogOut,
   Menu,
   Plus,
+  Printer,
   Search,
   Settings,
   Shield,
@@ -2259,14 +2260,23 @@ function LoansView({
             <span>PARCELAS DO MÊS</span>
             <h2>{selectedMonthLabel}</h2>
           </div>
-          <label>
-            Selecionar mês
-            <input
-              type="month"
-              value={selectedMonth}
-              onChange={(event) => setSelectedMonth(event.target.value)}
-            />
-          </label>
+          <div className="loan-month-actions">
+            <label>
+              Selecionar mês
+              <input
+                type="month"
+                value={selectedMonth}
+                onChange={(event) => setSelectedMonth(event.target.value)}
+              />
+            </label>
+            <button
+              className="primary"
+              disabled={monthlyInstallments.length === 0}
+              onClick={() => window.print()}
+            >
+              <Printer size={17} /> Emitir relatório
+            </button>
+          </div>
         </div>
         <div className="loan-month-total">
           <span>Total referente ao mês</span>
@@ -2290,6 +2300,56 @@ function LoansView({
           </div>
         )}
       </article>
+      <section className="loan-print-report" aria-hidden="true">
+        <header>
+          <div>
+            <span>MEU CONTROLE</span>
+            <h1>Relatório mensal de empréstimos</h1>
+          </div>
+          <p>
+            Emitido em {new Date().toLocaleDateString("pt-BR")}
+          </p>
+        </header>
+        <div className="loan-print-reference">
+          <span>Mês de referência</span>
+          <strong>{selectedMonthLabel}</strong>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Nome</th>
+              <th>Descrição</th>
+              <th>Mês</th>
+              <th>Parcela</th>
+              <th>Valor no mês</th>
+            </tr>
+          </thead>
+          <tbody>
+            {monthlyInstallments.map(({ loan, installment }) => (
+              <tr key={`report-${loan.id}-${installment.month}`}>
+                <td>{loan.borrower}</td>
+                <td>{loan.description}</td>
+                <td>{installment.label}</td>
+                <td>
+                  {loan.installments > 1
+                    ? `${installment.number} de ${loan.installments}`
+                    : "Única"}
+                </td>
+                <td>{money.format(installment.value)}</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr>
+              <td colSpan={4}>Total referente ao mês</td>
+              <td>{money.format(monthlyTotal)}</td>
+            </tr>
+          </tfoot>
+        </table>
+        <footer>
+          Relatório sem cálculo de juros · {monthlyInstallments.length} lançamento(s)
+        </footer>
+      </section>
       <div className="section-actions">
         <div>
           <span>CONTROLE SEM JUROS</span>

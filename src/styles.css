@@ -2192,6 +2192,18 @@ header h1 {
 .loan-month-head label {
   min-width: 190px;
 }
+.loan-month-actions {
+  display: flex;
+  align-items: end;
+  gap: 0.75rem;
+}
+.loan-month-actions .primary {
+  white-space: nowrap;
+}
+.loan-month-actions .primary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
 .loan-month-total {
   display: flex;
   align-items: center;
@@ -2221,6 +2233,9 @@ header h1 {
 .loan-month-list small {
   color: var(--muted);
 }
+.loan-print-report {
+  display: none;
+}
 .modal textarea {
   width: 100%;
   resize: vertical;
@@ -2238,8 +2253,87 @@ header h1 {
     align-items: stretch;
     flex-direction: column;
   }
+  .loan-month-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
   .loan-month-head label {
     width: 100%;
+  }
+}
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 16mm;
+  }
+  body {
+    color: #111;
+    background: #fff;
+  }
+  body * {
+    visibility: hidden;
+  }
+  .loan-print-report,
+  .loan-print-report * {
+    visibility: visible;
+  }
+  .loan-print-report {
+    display: block;
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    color: #111;
+    font-family: Arial, sans-serif;
+  }
+  .loan-print-report header {
+    display: flex;
+    align-items: start;
+    justify-content: space-between;
+    padding-bottom: 14px;
+    border-bottom: 2px solid #111;
+  }
+  .loan-print-report header h1 {
+    margin: 5px 0 0;
+    font-size: 24px;
+  }
+  .loan-print-report header p,
+  .loan-print-report footer {
+    color: #555;
+    font-size: 11px;
+  }
+  .loan-print-reference {
+    display: flex;
+    justify-content: space-between;
+    margin: 20px 0;
+    padding: 12px;
+    border: 1px solid #bbb;
+    text-transform: capitalize;
+  }
+  .loan-print-report table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+  .loan-print-report th,
+  .loan-print-report td {
+    padding: 9px 7px;
+    border: 1px solid #bbb;
+    text-align: left;
+  }
+  .loan-print-report th {
+    background: #eee;
+  }
+  .loan-print-report th:last-child,
+  .loan-print-report td:last-child {
+    text-align: right;
+  }
+  .loan-print-report tfoot {
+    font-weight: 700;
+  }
+  .loan-print-report footer {
+    margin-top: 18px;
+    text-align: center;
   }
 }
 
