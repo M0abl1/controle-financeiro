@@ -1,0 +1,44 @@
+[
+  {
+    "borrower": "Maureni",
+    "description": "compras coca cola margarina coco ralado etc",
+    "value": 27,
+    "installments": 1,
+    "startMonth": "2026-09"
+  },
+  {
+    "borrower": "Maureni",
+    "description": "suco de uva",
+    "value": 19,
+    "installments": 1,
+    "startMonth": "2026-09"
+  },
+  {
+    "borrower": "Maureni",
+    "description": "merenda maylla",
+    "value": 5,
+    "installments": 1,
+    "startMonth": "2026-09"
+  },
+  {
+    "borrower": "Maureni",
+    "description": "frango",
+    "value": 23,
+    "installments": 1,
+    "startMonth": "2026-09"
+  },
+  {
+    "borrower": "Maureni",
+    "description": "gasolina do palio",
+    "value": 150,
+    "installments": 1,
+    "startMonth": "2026-09"
+  },
+  {
+    "borrower": "Maureni",
+    "description": "material de construção",
+    "value": 181.85,
+    "installments": 2,
+    "startMonth": "2026-09"
+  }
+]

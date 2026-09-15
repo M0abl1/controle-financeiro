@@ -47,3 +47,15 @@ Contas antigas com cargo `dono` continuam compatíveis. Os lançamentos, reserva
 Nunca versione `.env.local`. As chaves públicas do cliente Firebase não substituem as regras de autorização; `firestore.rules` restringe cada usuário ao próprio caminho `dados/{uid}`.
 
 Para autenticação por redirecionamento em navegadores móveis, use `m0abl1financas.web.app` como `VITE_FIREBASE_AUTH_DOMAIN`. Isso mantém o fluxo OAuth no mesmo domínio do PWA e evita perda de sessão por bloqueio de armazenamento entre sites.
+# Importação de empréstimos por script
+
+O comando abaixo importa empréstimos de um JSON para a conta autenticada. Os IDs são determinísticos, portanto executar o mesmo arquivo novamente atualiza os registros sem duplicá-los.
+
+```powershell
+$env:LOAN_IMPORT_EMAIL="seu-email"
+$env:LOAN_IMPORT_PASSWORD="sua-senha"
+npm.cmd run import:loans -- --file scripts/data/loans-2026-09.json
+Remove-Item Env:LOAN_IMPORT_EMAIL, Env:LOAN_IMPORT_PASSWORD
+```
+
+As credenciais ficam somente na sessão atual do terminal e não são gravadas no projeto.
