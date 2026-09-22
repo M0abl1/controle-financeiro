@@ -2210,6 +2210,24 @@ header h1 {
   flex-direction: column;
   gap: 1rem;
 }
+.loan-person-card {
+  cursor: pointer;
+  min-height: 250px;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    transform 160ms ease;
+}
+.loan-person-card:hover,
+.loan-person-card:focus-visible {
+  border-color: #7c5ce0;
+  background: #15182a;
+  outline: none;
+  transform: translateY(-2px);
+}
+.loan-person-card:active {
+  transform: translateY(0);
+}
 .loan-card-head {
   display: flex;
   align-items: center;
@@ -2234,6 +2252,111 @@ header h1 {
 }
 .loan-card > strong {
   font-size: 1.65rem;
+}
+.loan-person-total {
+  display: grid;
+  gap: 0.25rem;
+}
+.loan-person-total span,
+.loan-person-metrics small {
+  color: var(--muted);
+}
+.loan-person-total strong {
+  font-size: 1.7rem;
+}
+.loan-person-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+.loan-person-metrics > div {
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.7rem;
+  border-radius: 10px;
+  background: #ffffff08;
+}
+.loan-person-metrics b {
+  font-size: 0.9rem;
+}
+.loan-card-open {
+  margin-top: auto;
+  color: #a78bfa;
+  font-weight: 700;
+}
+.loan-person-modal {
+  width: min(820px, 100%);
+}
+.loan-person-overview {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.65rem;
+  margin-bottom: 1rem;
+}
+.loan-person-overview > div {
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #081714;
+}
+.loan-person-overview small,
+.loan-person-overview span {
+  color: var(--muted);
+  font-size: 0.7rem;
+  text-transform: capitalize;
+}
+.loan-person-overview strong {
+  font-size: 1.05rem;
+}
+.loan-person-list {
+  display: grid;
+  gap: 0.75rem;
+}
+.loan-detail-item {
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #0a1917;
+}
+.loan-detail-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.loan-detail-head h3 {
+  margin: 0.2rem 0 0;
+  font-size: 1rem;
+}
+.loan-detail-head > strong {
+  white-space: nowrap;
+  font-size: 1.15rem;
+}
+.loan-detail-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1rem;
+  margin: 0.8rem 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+.loan-current-installment {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem;
+  border-radius: 10px;
+  background: #8b5cf616;
+}
+.loan-current-installment span {
+  color: var(--muted);
+  text-transform: capitalize;
+}
+.loan-current-installment b {
+  text-align: right;
 }
 .loan-installments {
   display: grid;
@@ -2353,6 +2476,20 @@ header h1 {
   }
   .loan-month-head label {
     width: 100%;
+  }
+  .loan-person-overview {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .loan-person-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .loan-detail-head,
+  .loan-current-installment {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .loan-current-installment b {
+    text-align: left;
   }
 }
 

@@ -1875,7 +1875,7 @@ function ReserveView({
       </article>
       <article className="panel chart-wide">
         <span>SIMULAÇÃO</span>
-        <h2>Projeção da reserva — 12 meses</h2>
+        <h2>Projeção da reserva - 12 meses</h2>
         <p>Projeção calculada sobre o saldo atual da Reserva.</p>
         <ResponsiveContainer width="100%" height={280}>
           <AreaChart data={projection}>
@@ -2379,7 +2379,26 @@ function LoansView({
   onDelete: (loanId: string) => Promise<void>;
 }) {
   const [editing, setEditing] = useState<Loan | null | "new">(null);
+  const [selectedPersonKey, setSelectedPersonKey] = useState<string | null>(null);
   const [selectedMonth, setSelectedMonth] = useState(localMonth());
+  const people = useMemo(() => {
+    const grouped = new Map<
+      string,
+      { key: string; name: string; loans: Loan[] }
+    >();
+    loans.forEach((loan) => {
+      const key = loan.borrower.trim().toLocaleLowerCase("pt-BR");
+      const current = grouped.get(key);
+      if (current) current.loans.push(loan);
+      else grouped.set(key, { key, name: loan.borrower.trim(), loans: [loan] });
+    });
+    return [...grouped.values()].sort((a, b) =>
+      a.name.localeCompare(b.name, "pt-BR"),
+    );
+  }, [loans]);
+  const selectedPerson = people.find(
+    (person) => person.key === selectedPersonKey,
+  );
   const total = loans.reduce((sum, loan) => sum + loan.value, 0);
   const installments = loans.reduce(
     (sum, loan) => sum + loan.installments,
@@ -2404,7 +2423,7 @@ function LoansView({
   return (
     <section className="page loans-page">
       <div className="transaction-summary-grid">
-        <Metric label="EMPRÉSTIMOS" value={String(loans.length)} />
+        <Metric label="PESSOAS" value={String(people.length)} />
         <Metric label="TOTAL EMPRESTADO" value={money.format(total)} />
         <Metric label="TOTAL DE PARCELAS" value={String(installments)} />
         <Metric label="TOTAL NO MÊS" value={money.format(monthlyTotal)} />
@@ -2525,56 +2544,78 @@ function LoansView({
             </button>
           </article>
         )}
-        {loans.map((loan) => {
-          const schedule = loanSchedule(loan);
+        {people.map((person) => {
+          const personTotal = person.loans.reduce(
+            (sum, loan) => sum + loan.value,
+            0,
+          );
+          const personInstallments = person.loans.reduce(
+            (sum, loan) => sum + loan.installments,
+            0,
+          );
+          const personMonthItems = person.loans.flatMap((loan) => {
+            const installment = loanSchedule(loan).find(
+              (item) => item.month === selectedMonth,
+            );
+            return installment ? [{ loan, installment }] : [];
+          });
+          const personMonthTotal = personMonthItems.reduce(
+            (sum, item) => sum + item.installment.value,
+            0,
+          );
           return (
-          <article className="panel loan-card" key={loan.id}>
+          <article
+            className="panel loan-card loan-person-card"
+            key={person.key}
+            role="button"
+            tabIndex={0}
+            onClick={() => setSelectedPersonKey(person.key)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                setSelectedPersonKey(person.key);
+              }
+            }}
+          >
             <div className="loan-card-head">
               <span className="loan-icon"><HandCoins /></span>
               <div>
                 <small>EMPRESTADO PARA</small>
-                <h3>{loan.borrower}</h3>
+                <h3>{person.name}</h3>
               </div>
             </div>
-            <p>{loan.description}</p>
-            <strong>{money.format(loan.value)}</strong>
-            <div className="loan-installments">
-              <span>{loan.installments}x sem juros</span>
-              <b>Uma parcela por mês</b>
+            <div className="loan-person-total">
+              <span>Valor total</span>
+              <strong>{money.format(personTotal)}</strong>
             </div>
-            <details className="loan-schedule">
-              <summary>Ver cronograma mensal</summary>
+            <div className="loan-person-metrics">
               <div>
-                {schedule.map((installment) => (
-                  <div className="loan-schedule-row" key={installment.month}>
-                    <span>
-                      {installment.number}/{loan.installments} · {installment.label}
-                    </span>
-                    <b>{money.format(installment.value)}</b>
-                  </div>
-                ))}
+                <small>Empréstimos</small>
+                <b>{person.loans.length}</b>
               </div>
-            </details>
-            <div className="goal-actions">
-              <button onClick={() => setEditing(loan)}>Editar</button>
-              <button
-                className="danger-link"
-                onClick={async () => {
-                  if (!confirm(`Excluir o empréstimo de ${loan.borrower}?`)) return;
-                  try {
-                    await onDelete(loan.id);
-                  } catch {
-                    alert("Não foi possível excluir o empréstimo.");
-                  }
-                }}
-              >
-                Excluir
-              </button>
+              <div>
+                <small>Parcelas</small>
+                <b>{personInstallments}</b>
+              </div>
+              <div>
+                <small>No mês</small>
+                <b>{money.format(personMonthTotal)}</b>
+              </div>
             </div>
+            <span className="loan-card-open">Ver detalhes</span>
           </article>
           );
         })}
       </div>
+      {selectedPerson && (
+        <LoanPersonModal
+          person={selectedPerson}
+          selectedMonth={selectedMonth}
+          close={() => setSelectedPersonKey(null)}
+          onEdit={setEditing}
+          onDelete={onDelete}
+        />
+      )}
       {editing && (
         <LoanModal
           loan={editing === "new" ? undefined : editing}
@@ -2586,6 +2627,145 @@ function LoansView({
         />
       )}
     </section>
+  );
+}
+
+function LoanPersonModal({
+  person,
+  selectedMonth,
+  close,
+  onEdit,
+  onDelete,
+}: {
+  person: { key: string; name: string; loans: Loan[] };
+  selectedMonth: string;
+  close: () => void;
+  onEdit: (loan: Loan) => void;
+  onDelete: (loanId: string) => Promise<void>;
+}) {
+  const total = person.loans.reduce((sum, loan) => sum + loan.value, 0);
+  const installmentCount = person.loans.reduce(
+    (sum, loan) => sum + loan.installments,
+    0,
+  );
+  const monthItems = person.loans.flatMap((loan) => {
+    const installment = loanSchedule(loan).find(
+      (item) => item.month === selectedMonth,
+    );
+    return installment ? [{ loan, installment }] : [];
+  });
+  const monthTotal = monthItems.reduce(
+    (sum, item) => sum + item.installment.value,
+    0,
+  );
+  const monthLabel = new Date(`${selectedMonth}-01T12:00:00`).toLocaleDateString(
+    "pt-BR",
+    { month: "long", year: "numeric" },
+  );
+
+  return (
+    <div
+      className="modal-backdrop"
+      onMouseDown={(event) => event.target === event.currentTarget && close()}
+    >
+      <div className="modal loan-person-modal">
+        <div className="modal-head">
+          <div>
+            <span>DETALHES DA PESSOA</span>
+            <h2>{person.name}</h2>
+          </div>
+          <button onClick={close} aria-label="Fechar"><X /></button>
+        </div>
+        <div className="loan-person-overview">
+          <div>
+            <small>Valor total</small>
+            <strong>{money.format(total)}</strong>
+          </div>
+          <div>
+            <small>Empréstimos</small>
+            <strong>{person.loans.length}</strong>
+          </div>
+          <div>
+            <small>Total de parcelas</small>
+            <strong>{installmentCount}</strong>
+          </div>
+          <div>
+            <small>Em {monthLabel}</small>
+            <strong>{money.format(monthTotal)}</strong>
+            <span>{monthItems.length} parcela(s)</span>
+          </div>
+        </div>
+        <div className="loan-person-list">
+          {person.loans.map((loan) => {
+            const schedule = loanSchedule(loan);
+            const currentInstallment = schedule.find(
+              (item) => item.month === selectedMonth,
+            );
+            return (
+              <article className="loan-detail-item" key={loan.id}>
+                <div className="loan-detail-head">
+                  <div>
+                    <small>EMPRÉSTIMO</small>
+                    <h3>{loan.description}</h3>
+                  </div>
+                  <strong>{money.format(loan.value)}</strong>
+                </div>
+                <div className="loan-detail-meta">
+                  <span>{loan.installments} parcela(s)</span>
+                  <span>
+                    Primeira parcela: {loan.startMonth.split("-").reverse().join("/")}
+                  </span>
+                  <span>
+                    Parcela média: {money.format(loan.value / loan.installments)}
+                  </span>
+                </div>
+                <div className="loan-current-installment">
+                  <span>{monthLabel}</span>
+                  {currentInstallment ? (
+                    <b>
+                      Parcela {currentInstallment.number}/{loan.installments}: {" "}
+                      {money.format(currentInstallment.value)}
+                    </b>
+                  ) : (
+                    <b>Sem parcela neste mês</b>
+                  )}
+                </div>
+                <details className="loan-schedule">
+                  <summary>Ver cronograma completo</summary>
+                  <div>
+                    {schedule.map((installment) => (
+                      <div className="loan-schedule-row" key={installment.month}>
+                        <span>
+                          {installment.number}/{loan.installments} - {installment.label}
+                        </span>
+                        <b>{money.format(installment.value)}</b>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+                <div className="goal-actions">
+                  <button onClick={() => onEdit(loan)}>Editar</button>
+                  <button
+                    className="danger-link"
+                    onClick={async () => {
+                      if (!confirm(`Excluir este empréstimo de ${person.name}?`))
+                        return;
+                      try {
+                        await onDelete(loan.id);
+                      } catch {
+                        alert("Não foi possível excluir o empréstimo.");
+                      }
+                    }}
+                  >
+                    Excluir
+                  </button>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -3144,7 +3324,7 @@ function TransactionModal({
                   <option value="free">Saldo livre da Reserva</option>
                   {goals.map((goal) => (
                     <option value={goal.id} key={goal.id}>
-                      {goal.name} — {money.format(goal.value)}
+                      {goal.name} - {money.format(goal.value)}
                     </option>
                   ))}
                 </select>
